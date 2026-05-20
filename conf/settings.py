@@ -51,16 +51,19 @@ STATIC_URL = "static/"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django.db.backends.mysql",
         "HOST": os.environ.get("MEPRAM_DB_HOST", "localhost"),
-        "PORT": os.environ.get("MEPRAM_DB_PORT", "5432"),
-        "NAME": os.environ.get("MEPRAM_DB_NAME", "domop54"),
-        "USER": os.environ.get("MEPRAM_DB_USER", "ohdsi"),
-        "PASSWORD": os.environ.get("MEPRAM_DB_PASSWORD", "ohdsi"),
+        "PORT": os.environ.get("MEPRAM_DB_PORT", "3306"),
+        "NAME": os.environ.get("MEPRAM_DB_NAME", "mepram_api"),
+        "USER": os.environ.get("MEPRAM_DB_USER", "mepram"),
+        "PASSWORD": os.environ.get("MEPRAM_DB_PASSWORD", "mepram_password"),
+        "OPTIONS": {"charset": "utf8mb4"},
     }
 }
 
-MEPRAM_DASHBOARD_SCHEMA = os.environ.get("MEPRAM_DASHBOARD_SCHEMA", "dashboard")
+MEPRAM_DASHBOARD_SCHEMA = os.environ.get(
+    "MEPRAM_DASHBOARD_SCHEMA", DATABASES["default"]["NAME"]
+)
 MEPRAM_CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get(

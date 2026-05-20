@@ -1,6 +1,6 @@
 # MePRAM API
 
-Read-only Django/DRF API for the aggregated PostgreSQL `dashboard` schema generated from OMOP data.
+Read-only Django/DRF API for aggregated MePRAM dashboard data generated from OMOP data.
 
 This MVP intentionally exposes dashboard aggregates, not the full operational/genomic MePRAM domain. It covers cohort summaries, OMOP domains, concepts, facts and measurements. Isolate-level workflows such as ST, carbapenemases, genomic alerts or Microreact need another source of data.
 
@@ -13,7 +13,7 @@ This is the recommended entry point for local development, smoke tests and front
 The local test stack starts two services:
 
 - `mepram_api`: Django API running inside a container
-- `mepram_db`: PostgreSQL database running inside a container
+- `mepram_db`: MySQL database running inside a container
 
 The database is stored in a Docker volume, so the stack can be stopped and started without losing data unless the volume is explicitly removed.
 
@@ -43,8 +43,6 @@ git checkout develop
 
 #### 2. Configure The Local Stack
 
-Place `dashboard.sql` two directories above this repository, or set `MEPRAM_DASHBOARD_SQL_PATH` in `.env`.
-
 ```bash
 cp .env.example .env
 ```
@@ -52,10 +50,10 @@ cp .env.example .env
 Relevant local settings:
 
 ```text
-MEPRAM_DASHBOARD_SQL_PATH=../../dashboard.sql
-MEPRAM_DB_NAME=mepram_dashboard
+MEPRAM_DB_NAME=mepram_api
 MEPRAM_DB_USER=mepram
 MEPRAM_DB_PASSWORD=mepram_password
+MEPRAM_DB_PORT_HOST=6608
 MEPRAM_API_PORT=8100
 MEPRAM_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
 ```
@@ -66,7 +64,21 @@ MEPRAM_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
 docker compose -f docker-compose.test.yml up -d --build
 ```
 
-The test compose imports `dashboard.sql` into PostgreSQL on first database volume creation.
+The test compose runs Django migrations on startup. The dashboard tables are Django-managed models, aligned with the PathoCore API approach: schema changes are represented in `core/models.py` and tracked through migrations.
+
+Mount or copy `dashboard.sql` into the API container before importing it. For example:
+
+```bash
+docker compose -f docker-compose.test.yml exec mepram_api mkdir -p /data
+docker compose -f docker-compose.test.yml cp /path/to/dashboard.sql mepram_api:/data/dashboard.sql
+```
+
+Then load the current dashboard dump into the migrated MySQL schema:
+
+```bash
+docker compose -f docker-compose.test.yml exec mepram_api \
+  python manage.py import_dashboard_sql /data/dashboard.sql --truncate
+```
 
 #### 4. Check The Stack
 
@@ -95,11 +107,11 @@ Open a shell in the API container:
 docker compose -f docker-compose.test.yml exec mepram_api bash
 ```
 
-Open a PostgreSQL shell:
+Open a MySQL shell:
 
 ```bash
 docker compose -f docker-compose.test.yml exec mepram_db \
-  psql -U mepram -d mepram_dashboard
+  mysql -umepram -pmepram_password mepram_api
 ```
 
 Run Django checks:
@@ -140,7 +152,14 @@ Aggregate endpoints support common filters such as `q`, `event_type`, `limit`, `
 
 ## Reloading Dashboard Data
 
-PostgreSQL imports `dashboard.sql` only when the database volume is first created. To reload the dump from scratch:
+To reload the dump into the existing database:
+
+```bash
+docker compose -f docker-compose.test.yml exec mepram_api \
+  python manage.py import_dashboard_sql /data/dashboard.sql --truncate
+```
+
+To recreate the local database from scratch:
 
 ```bash
 docker compose -f docker-compose.test.yml down -v

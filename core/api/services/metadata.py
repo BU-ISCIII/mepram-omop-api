@@ -1,3 +1,4 @@
+from core import models
 from core.api.services import db
 
 
@@ -13,37 +14,33 @@ CAPABILITIES = {
 
 
 def metadata_summary():
-    event_types = db.fetch_all(
-        "SELECT DISTINCT event_type FROM %s ORDER BY event_type"
-        % db.dashboard_table("fact_concept")
+    event_types = db.rows(
+        models.FactConcept.objects.values("event_type")
+        .distinct()
+        .order_by("event_type")
     )
-    domains = db.fetch_all(
-        """
-        SELECT domain_id, medical_concepts, participants
-        FROM %s
-        ORDER BY participants DESC, domain_id
-        """
-        % db.dashboard_table("fact_domain")
+    domains = db.rows(
+        models.FactDomain.objects.values(
+            "domain_id", "medical_concepts", "participants"
+        ).order_by("-participants", "domain_id")
     )
-    age_groups = db.fetch_all(
-        "SELECT DISTINCT age_group FROM %s WHERE age_group IS NOT NULL ORDER BY age_group"
-        % db.dashboard_table("dim_patient")
+    age_groups = db.rows(
+        models.DimPatient.objects.exclude(age_group__isnull=True)
+        .values("age_group")
+        .distinct()
+        .order_by("age_group")
     )
-    genders = db.fetch_all(
-        "SELECT DISTINCT gender FROM %s WHERE gender IS NOT NULL ORDER BY gender"
-        % db.dashboard_table("dim_patient")
+    genders = db.rows(
+        models.DimPatient.objects.exclude(gender__isnull=True)
+        .values("gender")
+        .distinct()
+        .order_by("gender")
     )
-    vocabularies = db.fetch_all(
-        """
-        SELECT DISTINCT vocabulary_id
-        FROM %s
-        WHERE vocabulary_id IS NOT NULL
-        ORDER BY vocabulary_id
-        """
-        % db.dashboard_table("concepts")
-    )
-    total = db.fetch_one(
-        "SELECT COUNT(*) AS total_patients FROM %s" % db.dashboard_table("dim_patient")
+    vocabularies = db.rows(
+        models.Concept.objects.exclude(vocabulary_id__isnull=True)
+        .values("vocabulary_id")
+        .distinct()
+        .order_by("vocabulary_id")
     )
     return {
         "schema": db.dashboard_schema(),
@@ -52,7 +49,7 @@ def metadata_summary():
         "age_groups": [row["age_group"] for row in age_groups],
         "genders": [row["gender"] for row in genders],
         "vocabularies": [row["vocabulary_id"] for row in vocabularies],
-        "total_patients": int(total["total_patients"]),
+        "total_patients": models.DimPatient.objects.count(),
         "capabilities": capabilities(),
     }
 
