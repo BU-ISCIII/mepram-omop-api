@@ -6,7 +6,7 @@ This MVP intentionally exposes dashboard aggregates, not the full operational/ge
 
 ## Local Test Stack
 
-Place `dashboard.sql` next to this repository, or set `MEPRAM_DASHBOARD_SQL_PATH` in `.env`.
+Place `dashboard.sql` two directories above this repository, or set `MEPRAM_DASHBOARD_SQL_PATH` in `.env`.
 
 ```bash
 cp .env.example .env
