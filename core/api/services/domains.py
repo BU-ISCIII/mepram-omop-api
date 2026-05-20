@@ -1,81 +1,71 @@
+from django.db.models import Count
+
+from core import models
 from core.api.services import db
 
 
 def list_domains(query=None):
     if not query:
-        return db.fetch_all(
-            """
-            SELECT domain_id, medical_concepts, participants
-            FROM %s
-            ORDER BY participants DESC, domain_id
-            """
-            % db.dashboard_table("fact_domain")
+        return db.rows(
+            models.FactDomain.objects.values(
+                "domain_id", "medical_concepts", "participants"
+            ).order_by("-participants", "domain_id")
         )
 
-    return db.fetch_all(
-        """
-        SELECT e.domain_id,
-               COUNT(DISTINCT e.concept_id)::integer AS medical_concepts,
-               COUNT(DISTINCT e.person_id)::integer AS participants
-        FROM {events} e
-        JOIN {concepts} c ON c.concept_id = e.concept_id
-        WHERE c.concept_name ILIKE %s
-        GROUP BY e.domain_id
-        ORDER BY participants DESC, e.domain_id
-        """.format(
-            events=db.dashboard_table("events_long"),
-            concepts=db.dashboard_table("concepts"),
-        ),
-        ["%%%s%%" % query],
+    matching_concepts = models.Concept.objects.filter(
+        concept_name__icontains=query
+    ).values("concept_id")
+    return db.rows(
+        models.EventsLong.objects.filter(concept_id__in=matching_concepts)
+        .values("domain_id")
+        .annotate(
+            medical_concepts=Count("concept_id", distinct=True),
+            participants=Count("person_id", distinct=True),
+        )
+        .order_by("-participants", "domain_id")
     )
 
 
 def domain_concepts(domain_id, query=None, limit=100, offset=0):
-    params = [domain_id]
-    name_filter = ""
+    concept_queryset = models.Concept.objects.filter(domain_id=domain_id)
     if query:
-        name_filter = "AND c.concept_name ILIKE %s"
-        params.append("%%%s%%" % query)
-    params.extend([limit, offset])
+        concept_queryset = concept_queryset.filter(concept_name__icontains=query)
 
-    rows = db.fetch_all(
-        """
-        WITH cohort AS (
-            SELECT COUNT(*)::double precision AS n FROM {patients}
+    concept_ids = concept_queryset.values("concept_id")
+    participant_rows = db.rows(
+        models.EventsLong.objects.filter(domain_id=domain_id, concept_id__in=concept_ids)
+        .values("concept_id")
+        .annotate(participants=Count("person_id", distinct=True))
+        .order_by("-participants", "concept_id")
+    )
+    concept_map = {
+        row["concept_id"]: row
+        for row in db.rows(
+            concept_queryset.values(
+                "concept_id", "concept_name", "vocabulary_id", "concept_code"
+            )
         )
-        SELECT c.concept_id,
-               c.concept_name,
-               c.vocabulary_id,
-               c.concept_code,
-               COUNT(DISTINCT e.person_id)::integer AS participants,
-               COUNT(DISTINCT e.person_id) / NULLIF((SELECT n FROM cohort), 0) * 100.0 AS pct
-        FROM {events} e
-        JOIN {concepts} c ON c.concept_id = e.concept_id
-        WHERE e.domain_id = %s
-          {name_filter}
-        GROUP BY c.concept_id, c.concept_name, c.vocabulary_id, c.concept_code
-        ORDER BY participants DESC, c.concept_name
-        LIMIT %s OFFSET %s
-        """.format(
-            patients=db.dashboard_table("dim_patient"),
-            events=db.dashboard_table("events_long"),
-            concepts=db.dashboard_table("concepts"),
-            name_filter=name_filter,
-        ),
-        params,
-    )
-    total = db.fetch_one(
-        """
-        SELECT COUNT(DISTINCT e.person_id)::integer AS total_participants
-        FROM {events} e
-        JOIN {concepts} c ON c.concept_id = e.concept_id
-        WHERE e.domain_id = %s
-          {name_filter}
-        """.format(
-            events=db.dashboard_table("events_long"),
-            concepts=db.dashboard_table("concepts"),
-            name_filter=name_filter,
-        ),
-        params[:-2],
-    )
-    return {"total_participants": total["total_participants"], "data": rows}
+    }
+    cohort_size = models.DimPatient.objects.count()
+    rows = []
+    for item in participant_rows:
+        concept = concept_map.get(item["concept_id"])
+        if concept is None:
+            continue
+        participants = item["participants"]
+        rows.append(
+            {
+                **concept,
+                "participants": participants,
+                "pct": participants / cohort_size * 100.0 if cohort_size else None,
+            }
+        )
+
+    rows = sorted(rows, key=lambda row: (-row["participants"], row["concept_name"]))
+    total = models.EventsLong.objects.filter(
+        domain_id=domain_id, concept_id__in=concept_ids
+    ).aggregate(total_participants=Count("person_id", distinct=True))
+    return {
+        "total_participants": total["total_participants"],
+        "data": rows[offset : offset + limit],
+    }

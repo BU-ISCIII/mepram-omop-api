@@ -1,4 +1,4 @@
-from core.api.services import db
+from core.api.services import dashboard_models, db
 
 
 STRATIFICATION_COLUMNS = {
@@ -24,20 +24,15 @@ def list_concepts(
     limit=100,
     offset=0,
 ):
-    table = db.FACT_CONCEPT_TABLES[stratification]
-    clauses = []
-    params = []
+    model = dashboard_models.FACT_CONCEPT_MODELS[stratification]
+    queryset = model.objects.all()
     if query:
-        clauses.append("concept_name ILIKE %s")
-        params.append("%%%s%%" % query)
+        queryset = queryset.filter(concept_name__icontains=query)
     if domain_id:
-        clauses.append("domain_id = %s")
-        params.append(domain_id)
+        queryset = queryset.filter(domain_id=domain_id)
     if event_type:
-        clauses.append("event_type = %s")
-        params.append(event_type)
+        queryset = queryset.filter(event_type=event_type)
 
-    where = "WHERE " + " AND ".join(clauses) if clauses else ""
     columns = [
         "concept_id",
         "concept_name",
@@ -49,25 +44,12 @@ def list_concepts(
         *FACT_COLUMNS[stratification],
     ]
     order_columns = [
-        "patient_count DESC",
+        "-patient_count",
         "concept_name",
         "event_type",
         *STRATIFICATION_COLUMNS[stratification],
     ]
-    params.extend([limit, offset])
 
-    return db.fetch_all(
-        """
-        SELECT {columns}
-        FROM {table}
-        {where}
-        ORDER BY {order_columns}
-        LIMIT %s OFFSET %s
-        """.format(
-            columns=", ".join(columns),
-            table=db.dashboard_table(table),
-            where=where,
-            order_columns=", ".join(order_columns),
-        ),
-        params,
+    return db.rows(
+        queryset.values(*columns).order_by(*order_columns)[offset : offset + limit]
     )
