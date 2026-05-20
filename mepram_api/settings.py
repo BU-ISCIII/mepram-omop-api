@@ -1,0 +1,90 @@
+from pathlib import Path
+import os
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+SECRET_KEY = os.environ.get("MEPRAM_API_SECRET_KEY", "dev-only-mepram-api")
+DEBUG = os.environ.get("MEPRAM_API_DEBUG", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get(
+        "MEPRAM_API_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0"
+    ).split(",")
+    if host.strip()
+]
+
+INSTALLED_APPS = [
+    "django.contrib.contenttypes",
+    "django.contrib.staticfiles",
+    "rest_framework",
+    "drf_spectacular",
+    "core.apps.CoreConfig",
+]
+
+MIDDLEWARE = [
+    "mepram_api.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.middleware.common.CommonMiddleware",
+]
+
+ROOT_URLCONF = "mepram_api.urls"
+WSGI_APPLICATION = "mepram_api.wsgi.application"
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "APP_DIRS": True,
+        "DIRS": [],
+        "OPTIONS": {"context_processors": []},
+    }
+]
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
+STATIC_URL = "static/"
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "HOST": os.environ.get("MEPRAM_DB_HOST", "localhost"),
+        "PORT": os.environ.get("MEPRAM_DB_PORT", "5432"),
+        "NAME": os.environ.get("MEPRAM_DB_NAME", "domop54"),
+        "USER": os.environ.get("MEPRAM_DB_USER", "ohdsi"),
+        "PASSWORD": os.environ.get("MEPRAM_DB_PASSWORD", "ohdsi"),
+    }
+}
+
+MEPRAM_DASHBOARD_SCHEMA = os.environ.get("MEPRAM_DASHBOARD_SCHEMA", "dashboard")
+MEPRAM_CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "MEPRAM_CORS_ALLOWED_ORIGINS",
+        "http://127.0.0.1:3000,http://localhost:3000",
+    ).split(",")
+    if origin.strip()
+]
+
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
+    "UNAUTHENTICATED_USER": None,
+    "UNAUTHENTICATED_TOKEN": None,
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "MePRAM API",
+    "DESCRIPTION": "Read-only API for aggregated MePRAM dashboard data.",
+    "VERSION": "v1",
+    "SERVE_INCLUDE_SCHEMA": True,
+    "SCHEMA_PATH_PREFIX": "/v1",
+    "SCHEMA_PATH_PREFIX_TRIM": True,
+    "SERVERS": [{"url": "/v1", "description": "MePRAM API v1"}],
+    "SORT_OPERATIONS": False,
+}
