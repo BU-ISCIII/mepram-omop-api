@@ -19,7 +19,7 @@ services:
       retries: 30
     volumes:
       - mepram_db_data:/var/lib/postgresql/data
-      - ${MEPRAM_DASHBOARD_SQL_PATH:-../dashboard.sql}:/docker-entrypoint-initdb.d/001-dashboard.sql:ro
+      - ${MEPRAM_DASHBOARD_SQL_PATH:-../../dashboard.sql}:/docker-entrypoint-initdb.d/001-dashboard.sql:ro
 
   mepram_api:
     build:
