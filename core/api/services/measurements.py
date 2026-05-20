@@ -1,4 +1,4 @@
-from core.api.services import db
+from core.api.services import dashboard_models, db
 
 
 STRATIFICATION_COLUMNS = {
@@ -17,7 +17,7 @@ def list_numeric(
     limit=100,
     offset=0,
 ):
-    table = db.NUMERIC_MEASUREMENT_TABLES[stratification]
+    model = dashboard_models.NUMERIC_MEASUREMENT_MODELS[stratification]
     metric_columns = [
         "unit_concept_id",
         "unit_name",
@@ -32,7 +32,7 @@ def list_numeric(
         "max_value",
     ]
     return _list_measurements(
-        table,
+        model,
         metric_columns,
         query=query,
         concept_id=concept_id,
@@ -51,7 +51,7 @@ def list_categorical(
     limit=100,
     offset=0,
 ):
-    table = db.CATEGORICAL_MEASUREMENT_TABLES[stratification]
+    model = dashboard_models.CATEGORICAL_MEASUREMENT_MODELS[stratification]
     metric_columns = [
         "value_as_concept_id",
         "value_concept_name",
@@ -69,7 +69,7 @@ def list_categorical(
             "patient_pct_concept",
         ]
     return _list_measurements(
-        table,
+        model,
         metric_columns,
         query=query,
         concept_id=concept_id,
@@ -81,7 +81,7 @@ def list_categorical(
 
 
 def _list_measurements(
-    table,
+    model,
     metric_columns,
     query=None,
     concept_id=None,
@@ -90,19 +90,14 @@ def _list_measurements(
     limit=100,
     offset=0,
 ):
-    clauses = []
-    params = []
+    queryset = model.objects.all()
     if query:
-        clauses.append("concept_name ILIKE %s")
-        params.append("%%%s%%" % query)
+        queryset = queryset.filter(concept_name__icontains=query)
     if concept_id:
-        clauses.append("concept_id = %s")
-        params.append(concept_id)
+        queryset = queryset.filter(concept_id=concept_id)
     if event_type:
-        clauses.append("event_type = %s")
-        params.append(event_type)
+        queryset = queryset.filter(event_type=event_type)
 
-    where = "WHERE " + " AND ".join(clauses) if clauses else ""
     columns = [
         "concept_id",
         "concept_name",
@@ -113,20 +108,7 @@ def _list_measurements(
         *metric_columns,
     ]
     order_columns = ["concept_name", "event_type", *STRATIFICATION_COLUMNS[stratification]]
-    params.extend([limit, offset])
 
-    return db.fetch_all(
-        """
-        SELECT {columns}
-        FROM {table}
-        {where}
-        ORDER BY {order_columns}
-        LIMIT %s OFFSET %s
-        """.format(
-            columns=", ".join(columns),
-            table=db.dashboard_table(table),
-            where=where,
-            order_columns=", ".join(order_columns),
-        ),
-        params,
+    return db.rows(
+        queryset.values(*columns).order_by(*order_columns)[offset : offset + limit]
     )
