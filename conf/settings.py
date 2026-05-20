@@ -27,13 +27,13 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    "mepram_api.middleware.CorsMiddleware",
+    "core.api.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
 ]
 
-ROOT_URLCONF = "mepram_api.urls"
-WSGI_APPLICATION = "mepram_api.wsgi.application"
+ROOT_URLCONF = "conf.urls"
+WSGI_APPLICATION = "conf.wsgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
