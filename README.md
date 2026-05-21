@@ -60,13 +60,29 @@ MEPRAM_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
 
 #### 3. Build And Start
 
+Run the container installer from the repository root:
+
 ```bash
-docker compose -f docker-compose.test.yml up -d --build
+bash container_install.sh --test --git_revision current
 ```
+
+Optionally, if this is the first time installing the images, you should provide a path to the SQL database:
+
+```bash
+bash container_install.sh --test --git_revision current --dashboard_sql path/to/dashboard.sql
+```
+
+This command will:
+
+* build the application image
+* start `app` and `db`
+* install the Django project inside the container
+* run database migrations
+* load the dashboard tables into the DB
 
 The test compose runs Django migrations on startup. The dashboard tables are Django-managed models, aligned with the PathoCore API approach: schema changes are represented in `core/models.py` and tracked through migrations.
 
-Mount or copy `dashboard.sql` into the API container before importing it. For example:
+The dashboard dump can also be uploaded later, by running the following commands
 
 ```bash
 docker compose -f docker-compose.test.yml exec mepram_api mkdir -p /data
