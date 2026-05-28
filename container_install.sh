@@ -289,10 +289,10 @@ fi
 
 set_engine
 
-app_repo_path="${APP_REPO_PATH:-/app}"
+app_repo_path="${APP_REPO_PATH:-/srv/mepram-omop-api}"
 config_install_path="$(read_install_conf_value "INSTALL_PATH" "$host_install_conf_path")"
 config_app_install_path="$(read_install_conf_value "APP_INSTALL_PATH" "$host_install_conf_path")"
-app_install_path="${APP_INSTALL_PATH:-${config_app_install_path:-${config_install_path:-/app}}}"
+app_install_path="${APP_INSTALL_PATH:-${config_app_install_path:-${config_install_path:-/srv/mepram-omop-api}}}"
 db_service="${DB_SERVICE:-mepram_db}"
 dashboard_sql_container_path="${DASHBOARD_SQL_CONTAINER_PATH:-/data/dashboard.sql}"
 api_port="$(read_install_conf_value "MEPRAM_API_PORT" "$host_install_conf_path")"
