@@ -11,6 +11,7 @@ RUN apt-get update \
       curl \
       default-libmysqlclient-dev \
       pkg-config \
+      git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY conf/requirements.txt /app/conf/requirements.txt
