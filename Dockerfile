@@ -3,7 +3,7 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-WORKDIR /app
+WORKDIR /srv/mepram-omop-api
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -17,8 +17,8 @@ RUN apt-get update \
 COPY conf/requirements.txt /app/conf/requirements.txt
 RUN pip install --no-cache-dir -r /app/conf/requirements.txt
 
-COPY . /app
+COPY . /srv/mepram-omop-api
 
 EXPOSE 8000
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["python", "/srv/mepram-omop-api/manage.py", "runserver", "0.0.0.0:8000"]
