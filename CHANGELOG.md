@@ -26,6 +26,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 #### Fixes
 
+- Fixed installation location to point to /srv and test ports to point to 8000/3000 [#3](https://github.com/BU-ISCIII/mepram-omop-api/pull/3)
+
 #### Changed
 
 - Align database implementation with PathoCore API by using MySQL, Django ORM models and migrations instead of querying an unmanaged external schema [#1](https://github.com/Aberdur/mepram-api/pull/1)
