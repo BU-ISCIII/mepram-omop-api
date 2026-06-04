@@ -19,7 +19,11 @@ ALLOWED_HOSTS = [
 ]
 
 INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
     "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
     "drf_spectacular",
@@ -29,7 +33,11 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "core.api.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
 ]
 
 ROOT_URLCONF = "conf.urls"
@@ -39,7 +47,14 @@ TEMPLATES = [
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "APP_DIRS": True,
         "DIRS": [],
-        "OPTIONS": {"context_processors": []},
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ]
+        },
     }
 ]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -73,21 +88,57 @@ MEPRAM_CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
+MEPRAM_AUTH_REQUIRED = os.environ.get("MEPRAM_AUTH_REQUIRED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+MEPRAM_DOCS_REQUIRE_STAFF = os.environ.get(
+    "MEPRAM_DOCS_REQUIRE_STAFF", "true"
+).lower() in {"1", "true", "yes", "on"}
+MEPRAM_KEYCLOAK_ISSUER = os.environ.get("MEPRAM_KEYCLOAK_ISSUER", "")
+MEPRAM_KEYCLOAK_JWKS_URL = os.environ.get("MEPRAM_KEYCLOAK_JWKS_URL", "")
+MEPRAM_KEYCLOAK_AUDIENCE = os.environ.get("MEPRAM_KEYCLOAK_AUDIENCE", "mepram-api")
+MEPRAM_KEYCLOAK_CLIENT_ID = os.environ.get("MEPRAM_KEYCLOAK_CLIENT_ID", "pathocore-web")
+MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS = int(
+    os.environ.get("MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS", "300")
+)
+MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS = int(
+    os.environ.get("MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS", "5")
+)
+
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        ["core.api.authentication.KeycloakJWTAuthentication"]
+        if MEPRAM_AUTH_REQUIRED
+        else []
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        ["rest_framework.permissions.IsAuthenticated"]
+        if MEPRAM_AUTH_REQUIRED
+        else ["rest_framework.permissions.AllowAny"]
+    ),
     "UNAUTHENTICATED_USER": None,
     "UNAUTHENTICATED_TOKEN": None,
 }
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "MePRAM API",
-    "DESCRIPTION": "Read-only API for aggregated MePRAM dashboard data.",
+    "DESCRIPTION": (
+        "Read-only API for aggregated MePRAM dashboard data. "
+        "Data endpoints are protected with Bearer JWT authentication when "
+        "MEPRAM_AUTH_REQUIRED is enabled."
+    ),
     "VERSION": None,
     "SERVE_INCLUDE_SCHEMA": True,
     "SCHEMA_PATH_PREFIX": "/v[0-9]+",
     "SCHEMA_PATH_PREFIX_TRIM": True,
     "SERVERS": [{"url": "/v1", "description": "MePRAM API v1"}],
     "SORT_OPERATIONS": False,
+    "SECURITY": [{"bearerAuth": []}] if MEPRAM_AUTH_REQUIRED else [],
 }
+
+STATIC_ROOT = BASE_DIR / "static"
+LOGIN_URL = "/admin/login/"

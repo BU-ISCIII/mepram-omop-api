@@ -56,6 +56,12 @@ MEPRAM_DB_PASSWORD=mepram_password
 MEPRAM_DB_PORT_HOST=6608
 MEPRAM_API_PORT=8100
 MEPRAM_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
+MEPRAM_AUTH_REQUIRED=true
+MEPRAM_DOCS_REQUIRE_STAFF=true
+MEPRAM_KEYCLOAK_ISSUER=http://<keycloak-host>:8089/realms/ciberisciii_datahub
+MEPRAM_KEYCLOAK_JWKS_URL=http://<keycloak-host>:8089/realms/ciberisciii_datahub/protocol/openid-connect/certs
+MEPRAM_KEYCLOAK_AUDIENCE=mepram-api
+MEPRAM_KEYCLOAK_CLIENT_ID=pathocore-web
 ```
 
 #### 3. Build And Start
@@ -106,8 +112,8 @@ curl http://127.0.0.1:8100/v1/health
 Useful URLs:
 
 - API health: `http://127.0.0.1:8100/v1/health`
-- OpenAPI: `http://127.0.0.1:8100/openapi/`
-- Swagger: `http://127.0.0.1:8100/swagger/`
+- OpenAPI: `http://127.0.0.1:8100/v1/openapi/`
+- Swagger: `http://127.0.0.1:8100/v1/swagger/`
 
 #### 5. Useful Commands
 
@@ -137,6 +143,16 @@ docker compose -f docker-compose.test.yml run --rm --no-deps \
   mepram_api python manage.py check
 ```
 
+Run tests. The test runner creates a temporary `test_mepram_api` database, so
+use the MySQL root credentials from the local compose only for this command:
+
+```bash
+docker compose -f docker-compose.test.yml exec -T \
+  -e MEPRAM_DB_USER=root \
+  -e MEPRAM_DB_PASSWORD=root \
+  mepram_api python manage.py test core
+```
+
 Stop the containers but keep the database volume:
 
 ```bash
@@ -147,6 +163,43 @@ Stop the containers and remove the database volume:
 
 ```bash
 docker compose -f docker-compose.test.yml down -v
+```
+
+## Security
+
+The data API follows the same security direction as PathoCore services:
+Keycloak-issued Bearer JWTs for `/v1` data endpoints and Django staff/session
+login for interactive documentation.
+
+Runtime switches:
+
+- `MEPRAM_AUTH_REQUIRED=true`: protects all `/v1` endpoints except
+  `/v1/health` with `Authorization: Bearer <jwt>`.
+- `MEPRAM_DOCS_REQUIRE_STAFF=true`: protects `/v1/swagger/` and `/v1/openapi/`
+  with Django staff login. `/swagger/` redirects to the versioned Swagger URL.
+- `MEPRAM_KEYCLOAK_ISSUER`: expected JWT issuer.
+- `MEPRAM_KEYCLOAK_JWKS_URL`: JWKS URL reachable from the API container. In the
+  VM deployment this can point to the published Keycloak port, for example
+  `http://172.20.10.47:8089/.../certs`.
+  If `pathocore-web` and `mepram-api` run in separate Compose projects, either
+  publish Keycloak on a reachable host port or attach `mepram_api` to the
+  Keycloak Docker network and use the Keycloak container DNS name in this URL.
+- `MEPRAM_KEYCLOAK_AUDIENCE`: expected JWT audience, recommended `mepram-api`.
+- `MEPRAM_KEYCLOAK_CLIENT_ID`: frontend/client identifier, usually
+  `pathocore-web`.
+
+Create a staff user for Swagger/OpenAPI access:
+
+```bash
+docker compose -f docker-compose.test.yml exec mepram_api \
+  python manage.py createsuperuser
+```
+
+Example authenticated request:
+
+```bash
+curl -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  http://127.0.0.1:8100/v1/cohort/summary
 ```
 
 ## API Reference
