@@ -25,6 +25,7 @@ def _validated(serializer_class, query_params):
     summary="Health check",
     description='Checks database connectivity and reports whether every Django-managed dashboard table exists. The response includes one entry per table with its existence flag and current row count, so it can be used to verify that migrations and the dashboard import completed successfully.',
     responses={200: serializers.HealthResponseSerializer},
+    auth=[],
 )
 @api_view(["GET"])
 @authentication_classes([])
@@ -40,8 +41,6 @@ def health_view(request):
     responses={200: serializers.MetadataResponseSerializer},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def metadata_view(request):
     return Response(metadata.metadata_summary(), status=status.HTTP_200_OK)
 
@@ -53,8 +52,6 @@ def metadata_view(request):
     responses={200: dict},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def capabilities_view(request):
     return Response(metadata.capabilities(), status=status.HTTP_200_OK)
 
@@ -66,8 +63,6 @@ def capabilities_view(request):
     responses={200: dict},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def cohort_summary_view(request):
     return Response(cohort.summary(), status=status.HTTP_200_OK)
 
@@ -80,8 +75,6 @@ def cohort_summary_view(request):
     responses={200: serializers.DomainSerializer(many=True)},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def domains_view(request):
     params = _validated(serializers.DomainQuerySerializer, request.query_params)
     return Response(domains.list_domains(params.get("q")), status=status.HTTP_200_OK)
@@ -99,8 +92,6 @@ def domains_view(request):
     responses={200: serializers.DomainConceptResponseSerializer},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def domain_concepts_view(request, domain_id):
     params = _validated(serializers.DomainConceptQuerySerializer, request.query_params)
     payload = domains.domain_concepts(
@@ -127,8 +118,6 @@ def domain_concepts_view(request, domain_id):
     responses={200: serializers.ConceptSerializer(many=True)},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def concepts_view(request):
     params = _validated(serializers.ConceptQuerySerializer, request.query_params)
     rows = concepts.list_concepts(
@@ -148,8 +137,6 @@ def concepts_view(request):
     responses={200: serializers.ConceptSerializer, 404: serializers.ErrorSerializer},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def concept_detail_view(request, concept_id):
     row = concepts.get_concept(concept_id)
     if row is None:
@@ -165,8 +152,6 @@ def concept_detail_view(request, concept_id):
     responses={200: dict, 404: serializers.ErrorSerializer},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def concept_dashboard_detail_view(request, concept_id):
     params = _validated(serializers.ConceptDetailQuerySerializer, request.query_params)
     payload = concepts.concept_detail(concept_id, event_type=params.get("event_type"))
@@ -193,8 +178,6 @@ FACT_CONCEPT_PARAMETERS = [
     responses={200: dict},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def fact_concepts_view(request):
     params = _validated(serializers.FactConceptQuerySerializer, request.query_params)
     return Response(
@@ -228,8 +211,6 @@ MEASUREMENT_PARAMETERS = [
     responses={200: dict},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def numeric_measurements_view(request):
     params = _validated(serializers.MeasurementQuerySerializer, request.query_params)
     return Response(
@@ -253,8 +234,6 @@ def numeric_measurements_view(request):
     responses={200: dict},
 )
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def categorical_measurements_view(request):
     params = _validated(serializers.MeasurementQuerySerializer, request.query_params)
     return Response(

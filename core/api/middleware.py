@@ -16,7 +16,7 @@ class CorsMiddleware:
         if origin in settings.MEPRAM_CORS_ALLOWED_ORIGINS:
             response["Access-Control-Allow-Origin"] = origin
             response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-            response["Access-Control-Allow-Headers"] = "Accept, Content-Type"
+            response["Access-Control-Allow-Headers"] = "Accept, Authorization, Content-Type"
             response["Vary"] = "Origin"
 
         return response
