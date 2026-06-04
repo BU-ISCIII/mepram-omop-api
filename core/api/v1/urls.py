@@ -1,18 +1,37 @@
+from django.conf import settings
+from django.contrib.admin.views.decorators import staff_member_required
 from django.urls import path
-
-from core.api.v1 import views
 from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from core.api.v1 import views
+
 app_name = "mepram_api"
-namespace="v1"
+namespace = "v1"
+
+
+class StaffSpectacularAPIView(SpectacularAPIView):
+    authentication_classes = []
+    permission_classes = []
+
+
+class StaffSpectacularSwaggerView(SpectacularSwaggerView):
+    authentication_classes = []
+    permission_classes = []
+
+
+def docs_view(view):
+    if settings.MEPRAM_DOCS_REQUIRE_STAFF:
+        return staff_member_required(view)
+    return view
+
 
 urlpatterns = [
     path("", RedirectView.as_view(url="swagger/", permanent=False)),
-    path("openapi/", SpectacularAPIView.as_view(), name="schema"),
+    path("openapi/", docs_view(StaffSpectacularAPIView.as_view()), name="schema"),
     path(
         "swagger/",
-        SpectacularSwaggerView.as_view(url_name="v1:schema"),
+        docs_view(StaffSpectacularSwaggerView.as_view(url_name="v1:schema")),
         name="swagger-ui",
     ),
     path("health", views.health_view, name="health"),
