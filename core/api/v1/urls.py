@@ -1,10 +1,20 @@
 from django.urls import path
 
 from core.api.v1 import views
+from django.views.generic import RedirectView
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 app_name = "mepram_api"
+namespace="v1"
 
 urlpatterns = [
+    path("", RedirectView.as_view(url="swagger/", permanent=False)),
+    path("openapi/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "swagger/",
+        SpectacularSwaggerView.as_view(url_name="v1:schema"),
+        name="swagger-ui",
+    ),
     path("health", views.health_view, name="health"),
     path("metadata", views.metadata_view, name="metadata"),
     path("capabilities", views.capabilities_view, name="capabilities"),
