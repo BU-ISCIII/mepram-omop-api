@@ -97,6 +97,12 @@ MEPRAM_AUTH_REQUIRED = os.environ.get("MEPRAM_AUTH_REQUIRED", "true").lower() in
 MEPRAM_DOCS_REQUIRE_STAFF = os.environ.get(
     "MEPRAM_DOCS_REQUIRE_STAFF", "true"
 ).lower() in {"1", "true", "yes", "on"}
+MEPRAM_CREATE_DEFAULT_SUPERUSER = os.environ.get(
+    "MEPRAM_CREATE_DEFAULT_SUPERUSER", "false"
+).lower() in {"1", "true", "yes", "on"}
+DJANGO_SUPERUSER_USERNAME = os.environ.get("DJANGO_SUPERUSER_USERNAME", "admin")
+DJANGO_SUPERUSER_EMAIL = os.environ.get("DJANGO_SUPERUSER_EMAIL", "admin@example.org")
+DJANGO_SUPERUSER_PASSWORD = os.environ.get("DJANGO_SUPERUSER_PASSWORD", "admin_pass")
 MEPRAM_KEYCLOAK_ISSUER = os.environ.get("MEPRAM_KEYCLOAK_ISSUER", "")
 MEPRAM_KEYCLOAK_JWKS_URL = os.environ.get("MEPRAM_KEYCLOAK_JWKS_URL", "")
 MEPRAM_KEYCLOAK_AUDIENCE = os.environ.get("MEPRAM_KEYCLOAK_AUDIENCE", "mepram-api")

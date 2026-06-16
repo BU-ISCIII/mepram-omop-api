@@ -311,6 +311,8 @@ run_django_deploy() {
         python manage.py migrate --noinput
     fi
 
+    python manage.py ensure_default_superuser
+
     local dashboard_sql_path="${dashboard_sql:-${MEPRAM_DASHBOARD_SQL:-}}"
     if [ -n "$dashboard_sql_path" ] && [ "$skip_dashboard_sql" = false ]; then
         ensure_file_exists "$dashboard_sql_path" "$dashboard_sql_path"

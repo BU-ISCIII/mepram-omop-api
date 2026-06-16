@@ -1,7 +1,9 @@
+from io import StringIO
 from unittest.mock import patch
 
 import jwt
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APIRequestFactory
@@ -181,3 +183,55 @@ class DocumentationStaffAccessTests(TestCase):
         response = client.get("/v1/swagger/")
 
         self.assertEqual(response.status_code, 200)
+
+
+class DefaultSuperuserCommandTests(TestCase):
+    @override_settings(
+        MEPRAM_CREATE_DEFAULT_SUPERUSER=True,
+        DJANGO_SUPERUSER_USERNAME="admin",
+        DJANGO_SUPERUSER_EMAIL="admin@example.org",
+        DJANGO_SUPERUSER_PASSWORD="admin_pass",
+    )
+    def test_creates_default_superuser(self):
+        output = StringIO()
+
+        call_command("ensure_default_superuser", stdout=output)
+
+        user = get_user_model().objects.get(username="admin")
+        self.assertEqual(user.email, "admin@example.org")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password("admin_pass"))
+        self.assertIn("Created default superuser", output.getvalue())
+
+    @override_settings(
+        MEPRAM_CREATE_DEFAULT_SUPERUSER=True,
+        DJANGO_SUPERUSER_USERNAME="admin",
+        DJANGO_SUPERUSER_EMAIL="new@example.org",
+        DJANGO_SUPERUSER_PASSWORD="new_pass",
+    )
+    def test_updates_existing_default_superuser(self):
+        get_user_model().objects.create_user(
+            username="admin",
+            email="old@example.org",
+            password="old_pass",
+            is_staff=False,
+            is_superuser=False,
+        )
+
+        call_command("ensure_default_superuser", stdout=StringIO())
+
+        user = get_user_model().objects.get(username="admin")
+        self.assertEqual(user.email, "new@example.org")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password("new_pass"))
+
+    @override_settings(MEPRAM_CREATE_DEFAULT_SUPERUSER=False)
+    def test_skips_when_disabled(self):
+        output = StringIO()
+
+        call_command("ensure_default_superuser", stdout=output)
+
+        self.assertFalse(get_user_model().objects.exists())
+        self.assertIn("Default superuser creation disabled", output.getvalue())
