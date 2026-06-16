@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 #### Added enhancements
 
+- Add configurable Django superuser bootstrap for local/test Swagger and admin access [#4](https://github.com/BU-ISCIII/mepram-omop-api/pull/4)
 - Add installation scripts that emulate Iskylim's approach [#2](https://github.com/BU-ISCIII/mepram-omop-api/pull/2)
 - Add Django/DRF MVP API for read-only access to the aggregated OMOP dashboard schema [#1](https://github.com/Aberdur/mepram-api/pull/1)
 - Add Docker test stack with MySQL, following the PathoCore API local stack pattern [#1](https://github.com/Aberdur/mepram-api/pull/1)
