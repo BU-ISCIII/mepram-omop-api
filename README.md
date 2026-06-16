@@ -58,6 +58,10 @@ MEPRAM_API_PORT=8100
 MEPRAM_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
 MEPRAM_AUTH_REQUIRED=true
 MEPRAM_DOCS_REQUIRE_STAFF=true
+MEPRAM_CREATE_DEFAULT_SUPERUSER=true
+DJANGO_SUPERUSER_USERNAME=admin
+DJANGO_SUPERUSER_EMAIL=admin@example.org
+DJANGO_SUPERUSER_PASSWORD=admin_pass
 MEPRAM_KEYCLOAK_ISSUER=http://<keycloak-host>:8089/realms/ciberisciii_datahub
 MEPRAM_KEYCLOAK_JWKS_URL=http://<keycloak-host>:8089/realms/ciberisciii_datahub/protocol/openid-connect/certs
 MEPRAM_KEYCLOAK_AUDIENCE=mepram-api
@@ -177,6 +181,9 @@ Runtime switches:
   `/v1/health` with `Authorization: Bearer <jwt>`.
 - `MEPRAM_DOCS_REQUIRE_STAFF=true`: protects `/v1/swagger/` and `/v1/openapi/`
   with Django staff login. `/swagger/` redirects to the versioned Swagger URL.
+- `MEPRAM_CREATE_DEFAULT_SUPERUSER=true`: creates or updates the local Django
+  superuser configured with `DJANGO_SUPERUSER_*` after migrations. In the test
+  stack this gives Swagger/admin access with `admin / admin_pass`.
 - `MEPRAM_KEYCLOAK_ISSUER`: expected JWT issuer.
 - `MEPRAM_KEYCLOAK_JWKS_URL`: JWKS URL reachable from the API container. In the
   VM deployment this can point to the published Keycloak port, for example
@@ -188,12 +195,15 @@ Runtime switches:
 - `MEPRAM_KEYCLOAK_CLIENT_ID`: frontend/client identifier, usually
   `pathocore-web`.
 
-Create a staff user for Swagger/OpenAPI access:
+Swagger/OpenAPI access in the test stack:
 
-```bash
-docker compose -f docker-compose.test.yml exec mepram_api \
-  python manage.py createsuperuser
+```text
+admin / admin_pass
 ```
+
+For non-test deployments, either set `MEPRAM_CREATE_DEFAULT_SUPERUSER=false` and
+create staff users manually, or override `DJANGO_SUPERUSER_USERNAME`,
+`DJANGO_SUPERUSER_EMAIL` and `DJANGO_SUPERUSER_PASSWORD`.
 
 Example authenticated request:
 
