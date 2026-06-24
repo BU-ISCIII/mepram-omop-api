@@ -128,6 +128,14 @@ REST_FRAMEWORK = {
     ),
     "UNAUTHENTICATED_USER": None,
     "UNAUTHENTICATED_TOKEN": None,
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '500/hour',
+        'user': '500/hour'
+    }
 }
 
 SPECTACULAR_SETTINGS = {
