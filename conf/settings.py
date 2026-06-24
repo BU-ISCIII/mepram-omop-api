@@ -69,7 +69,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.mysql",
         "HOST": os.environ.get("MEPRAM_DB_HOST", "localhost"),
         "PORT": os.environ.get("MEPRAM_DB_PORT", "3306"),
-        "NAME": os.environ.get("MEPRAM_DB_NAME", "mepram_api"),
+        "NAME": os.environ.get("MEPRAM_DB_NAME", "mepram_omop_api"),
         "USER": os.environ.get("MEPRAM_DB_USER", "mepram"),
         "PASSWORD": os.environ.get("MEPRAM_DB_PASSWORD", "mepram_password"),
         "OPTIONS": {"charset": "utf8mb4"},

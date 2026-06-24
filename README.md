@@ -50,7 +50,7 @@ cp .env.example .env
 Relevant local settings:
 
 ```text
-MEPRAM_DB_NAME=mepram_api
+MEPRAM_DB_NAME=mepram_omop_api
 MEPRAM_DB_USER=mepram
 MEPRAM_DB_PASSWORD=mepram_password
 MEPRAM_DB_PORT_HOST=6608
@@ -137,7 +137,7 @@ Open a MySQL shell:
 
 ```bash
 docker compose -f docker-compose.test.yml exec mepram_db \
-  mysql -umepram -pmepram_password mepram_api
+  mysql -umepram -pmepram_password mepram_omop_api
 ```
 
 Run Django checks:
@@ -147,7 +147,7 @@ docker compose -f docker-compose.test.yml run --rm --no-deps \
   mepram_api python manage.py check
 ```
 
-Run tests. The test runner creates a temporary `test_mepram_api` database, so
+Run tests. The test runner creates a temporary `test_mepram_omop_api` database, so
 use the MySQL root credentials from the local compose only for this command:
 
 ```bash
