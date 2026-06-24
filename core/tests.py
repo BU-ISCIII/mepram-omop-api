@@ -146,7 +146,7 @@ class EndpointSecurityTests(SimpleTestCase):
     def test_health_endpoint_is_public(self):
         payload = {
             "status": "UP",
-            "schema": "mepram_api",
+            "schema": "mepram_omop_api",
             "tables": [],
             "checked_at": "2026-01-01T00:00:00+00:00",
         }

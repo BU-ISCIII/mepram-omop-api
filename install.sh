@@ -117,7 +117,7 @@ conn = MySQLdb.connect(
     port=int(os.environ.get("MEPRAM_DB_PORT", "3306")),
     user=os.environ.get("MEPRAM_DB_USER", "mepram"),
     passwd=os.environ.get("MEPRAM_DB_PASSWORD", "mepram_password"),
-    db=os.environ.get("MEPRAM_DB_NAME", "mepram_api"),
+    db=os.environ.get("MEPRAM_DB_NAME", "mepram_omop_api"),
 )
 conn.close()
 PY
