@@ -1,6 +1,9 @@
 from pathlib import Path
 import os
 
+def _rate_env(name, default):
+    return os.environ.get(name, default).strip()
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("MEPRAM_API_SECRET_KEY", "dev-only-mepram-api")
@@ -88,7 +91,7 @@ MEPRAM_CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
-MEPRAM_AUTH_REQUIRED = os.environ.get("MEPRAM_AUTH_REQUIRED", "true").lower() in {
+MEPRAM_AUTH_REQUIRED = os.environ.get("MEPRAM_AUTH_REQUIRED", "false").lower() in {
     "1",
     "true",
     "yes",
@@ -133,8 +136,8 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '500/hour',
-        'user': '500/hour'
+        'anon': _rate_env('PUBLIC_API_THROTTLE_RATE', '500/hour'),
+        'user': _rate_env('PUBLIC_API_THROTTLE_RATE', '500/hour')
     }
 }
 
