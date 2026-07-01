@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 #### Added enhancements
 
+- Add new endpoint for pre-generated reports and surfaced total_medical_concepts in metadata endpoint [#11](https://github.com/BU-ISCIII/mepram-omop-api/pull/11)
 - Add default throttle at 500 requests/hour and set authentication as "false" by default [#9](https://github.com/BU-ISCIII/mepram-omop-api/pull/9)
 - Add configurable Django superuser bootstrap for local/test Swagger and admin access [#7](https://github.com/BU-ISCIII/mepram-omop-api/pull/7)
 - Add installation scripts that emulate Iskylim's approach [#2](https://github.com/BU-ISCIII/mepram-omop-api/pull/2)
