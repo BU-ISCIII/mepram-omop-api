@@ -344,4 +344,22 @@ class Migration(migrations.Migration):
                 'abstract': False,
             },
         ),
+        migrations.CreateModel(
+            name='ReportCache',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('report_key', models.CharField(max_length=255, unique=True)),
+                ('summary_name', models.CharField(max_length=255)),
+                ('scope_key', models.CharField(max_length=255)),
+                ('filters', models.JSONField()),
+                ('filters_hash', models.CharField(max_length=255)),
+                ('payload', models.JSONField()),
+                ('created_at', models.DateField()),
+                ('updated_at', models.DateField()),
+            ],
+            options={
+                'db_table': 'report_cache',
+                'abstract': False,
+            },
+        ), 
     ]

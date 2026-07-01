@@ -39,4 +39,5 @@ DASHBOARD_MODELS = [
     models.FactMeasurementCategoricalByAge,
     models.FactMeasurementCategoricalBySex,
     models.FactMeasurementCategoricalByAgeSex,
+    models.ReportCache
 ]

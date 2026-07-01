@@ -100,3 +100,9 @@ class MetadataResponseSerializer(serializers.Serializer):
     vocabularies = serializers.ListField(child=serializers.CharField())
     total_patients = serializers.IntegerField()
     capabilities = serializers.DictField()
+
+class ReportQuerySerializer(serializers.Serializer):
+    limit = serializers.IntegerField(required=False, min_value=1, max_value=1000, default=20)
+    start_date = serializers.DateField(required=False, default="1980-01-01")
+    end_date = serializers.DateField(required=False, default="3000-01-01")
+    summary_name = serializers.CharField(required=False, allow_blank=True)

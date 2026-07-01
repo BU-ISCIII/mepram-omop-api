@@ -256,6 +256,12 @@ Response fields:
 
 Returns boolean feature flags describing the current API scope. It explicitly marks clinical aggregates, age/sex stratifications and numeric/categorical measurements as supported, and isolate explorer/genomic alerts as unsupported.
 
+### `GET /v1/cohort/report`
+
+Displays the complete descriptive reports from the imported dashboard database tables. The response follows the report JSON structure: top-level `report` metadata, `sections` with the naming of each section and the tables associated, and the `data_tables` with the data to generate the tables. It includes table objects with `columns`, `n_rows`, `default_order` and positional `rows`.
+
+The reports contains cohort summaries, domain counts, concept aggregates, numeric measurement summaries and categorical measurement summaries, including available age, sex and age+sex stratifications.
+
 ### `GET /v1/cohort/summary`
 
 Returns cohort-level patient distributions from `dim_patient`.
