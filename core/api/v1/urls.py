@@ -37,6 +37,7 @@ urlpatterns = [
     path("health", views.health_view, name="health"),
     path("metadata", views.metadata_view, name="metadata"),
     path("capabilities", views.capabilities_view, name="capabilities"),
+    path("cohort/report", views.full_report_view, name="cohort_report"),
     path("cohort/summary", views.cohort_summary_view, name="cohort_summary"),
     path("domains", views.domains_view, name="domains"),
     path(

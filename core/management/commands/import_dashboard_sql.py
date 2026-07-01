@@ -6,12 +6,16 @@ from django.db import transaction
 
 from core.api.services.dashboard_models import DASHBOARD_MODELS
 
+import json
+
 
 COPY_RE = re.compile(r"^COPY dashboard\.([^\s(]+) \(([^)]+)\) FROM stdin;$")
 TABLE_MODELS = {model._meta.db_table: model for model in DASHBOARD_MODELS}
 
 
 def parse_copy_value(value):
+    if isinstance(value, dict):
+        return value
     if value == r"\N":
         return None
 
@@ -118,6 +122,9 @@ class Command(BaseCommand):
                 return row_count
 
             values = line.rstrip("\n").split("\t")
+            if columns[-1] == "payload":
+                values[-1] = json.loads(values[-1])
+
             if len(values) != len(columns):
                 raise CommandError(
                     f"Invalid row for {model._meta.db_table}: "
