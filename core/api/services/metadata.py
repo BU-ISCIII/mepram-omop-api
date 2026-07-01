@@ -1,3 +1,4 @@
+from django.db.models import Sum
 from core import models
 from core.api.services import db
 
@@ -50,6 +51,7 @@ def metadata_summary():
         "genders": [row["gender"] for row in genders],
         "vocabularies": [row["vocabulary_id"] for row in vocabularies],
         "total_patients": models.DimPatient.objects.count(),
+        "total_medical_concepts": models.FactDomain.objects.aggregate(total_medical_concepts=Sum("medical_concepts")).get("total_medical_concepts", 0),
         "capabilities": capabilities(),
     }
 
