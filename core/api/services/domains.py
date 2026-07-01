@@ -1,30 +1,17 @@
-from django.db.models import Count
+from django.db.models import Count, Sum
 
 from core import models
 from core.api.services import db
 
 
-def list_domains(query=None):
-    if not query:
-        return db.rows(
-            models.FactDomain.objects.values(
-                "domain_id", "medical_concepts", "participants"
-            ).order_by("-participants", "domain_id")
+def list_domains():
+    all_domains =  models.FactDomain.objects
+    return {
+        "total_medical_concepts": all_domains.aggregate(total_medical_concepts=Sum("medical_concepts")).get("total_medical_concepts", 0),
+        "medical_concepts": db.rows(
+            all_domains.values("domain_id", "medical_concepts", "participants").order_by("-participants", "domain_id")
         )
-
-    matching_concepts = models.Concept.objects.filter(
-        concept_name__icontains=query
-    ).values("concept_id")
-    return db.rows(
-        models.EventsLong.objects.filter(concept_id__in=matching_concepts)
-        .values("domain_id")
-        .annotate(
-            medical_concepts=Count("concept_id", distinct=True),
-            participants=Count("person_id", distinct=True),
-        )
-        .order_by("-participants", "domain_id")
-    )
-
+    }
 
 def domain_concepts(domain_id, query=None, limit=100, offset=0):
     concept_queryset = models.Concept.objects.filter(domain_id=domain_id)
@@ -64,8 +51,9 @@ def domain_concepts(domain_id, query=None, limit=100, offset=0):
     rows = sorted(rows, key=lambda row: (-row["participants"], row["concept_name"]))
     total = models.EventsLong.objects.filter(
         domain_id=domain_id, concept_id__in=concept_ids
-    ).aggregate(total_participants=Count("person_id", distinct=True))
+    ).aggregate(total_participants=Count("person_id", distinct=True),total_concepts=Count("person_id", distinct=False))
     return {
         "total_participants": total["total_participants"],
+        "total_concepts": total["total_concepts"],
         "data": rows[offset : offset + limit],
     }
