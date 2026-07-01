@@ -1,10 +1,20 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from core.api.services import cohort, concepts, domains, facts, health, measurements, metadata
+from core.api.services import (
+    cohort,
+    concepts,
+    domains,
+    facts,
+    health,
+    measurements,
+    metadata,
+    reports,
+)
 from core.api.v1 import serializers
 
 TAG_OPERATION = "Operation"
@@ -58,6 +68,24 @@ def capabilities_view(request):
 
 @extend_schema(
     tags=[TAG_DASHBOARD],
+    summary="Full descriptive report of one or multiple cohort",
+    description='Retrieves available reports from the cohorts',
+    responses={200: dict},
+    parameters=[
+        OpenApiParameter("limit", int, required=False, default=20),
+        OpenApiParameter("start_date", OpenApiTypes.DATE, required=False, default="1980-01-01", description="Earliest start date of report submission until today, in YYYY-MM-DD format. If used alongside end_date, it will return all the reports in a date range."),
+        OpenApiParameter("end_date", OpenApiTypes.DATE, required=False, default="3000-01-01", description="Latest end date of report submission, in YYYY-MM-DD format. If used alongside start_date, it will return all the reports in a date range."),
+        OpenApiParameter("summary_name", str, required=False, description="Name of the report.")
+    ]
+)
+@api_view(["GET"])
+def full_report_view(request):
+    params = _validated(serializers.ReportQuerySerializer, request.query_params)
+    return Response(reports.report(params), status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    tags=[TAG_DASHBOARD],
     summary="Cohort summary",
     description='Returns the dashboard cohort size and patient distributions by age group, by sex and by the combined age+sex stratification. Counts are based on the distinct patient dimension imported from dashboard.sql.',
     responses={200: dict},
@@ -70,14 +98,12 @@ def cohort_summary_view(request):
 @extend_schema(
     tags=[TAG_DASHBOARD],
     summary="List dashboard domains",
-    description='Lists OMOP domains available in the dashboard. Without filters, values come from the precomputed domain aggregate table. With q, domains are recomputed from matching concept names and event rows.',
-    parameters=[OpenApiParameter("q", str, required=False)],
+    description='Lists OMOP domains available in the dashboard.',
     responses={200: serializers.DomainSerializer(many=True)},
 )
 @api_view(["GET"])
 def domains_view(request):
-    params = _validated(serializers.DomainQuerySerializer, request.query_params)
-    return Response(domains.list_domains(params.get("q")), status=status.HTTP_200_OK)
+    return Response(domains.list_domains(), status=status.HTTP_200_OK)
 
 
 @extend_schema(

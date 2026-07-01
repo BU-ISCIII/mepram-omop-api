@@ -197,3 +197,16 @@ class FactMeasurementCategoricalByAgeSex(CategoricalMeasurementBase):
 
     class Meta(CategoricalMeasurementBase.Meta):
         db_table = "fact_measurement_categorical_by_age_sex"
+
+class ReportCache(DashboardModel):
+    report_key = models.CharField(max_length=255, primary_key=True)
+    summary_name = models.CharField(max_length=255, null=True)
+    scope_key = models.CharField(max_length=255, null=True)
+    filters_hash = models.CharField(max_length=255, null=True)
+    filters = models.JSONField(null=True)
+    payload = models.JSONField(null=True)
+    created_at = models.DateField()
+    updated_at = models.DateField()
+
+    class Meta(DashboardModel.Meta):
+        db_table = "report_cache"
