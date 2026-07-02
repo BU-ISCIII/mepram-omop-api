@@ -1,0 +1,140 @@
+{
+    "$schema": "https://json-schema.org/draft/2023-12/schema",
+    "$id": "https://repiiis.dev/schemas/report_payload_schema.json",
+    "title": "Report Payload Schema",
+    "description": "Schema for report payload JSON files such as mepram-junio.json.",
+    "type": "object",
+    "unevaluatedProperties": false,
+    "additionalProperties": false,
+    "minProperties": 3,
+    "properties": {
+        "report": {
+            "type": "object",
+            "minProperties": 8,
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Title of the report."
+                },
+                "subtitle": {
+                    "type": "string",
+                    "description": "Subtitle of the report."
+                },
+                "author": {
+                    "type": "string",
+                    "description": "Author of the report."
+                },
+                "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Date of the report."
+                },
+                "generator": {
+                    "type": "string",
+                    "description": "Generator information for the report, if any."
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Summary of the report."
+                },
+                "total_episodes": {
+                    "type": "integer",
+                    "description": "Total number of episodes reported."
+                },
+                "content_inventory": {
+                    "type": "object",
+                    "description": "Content of the report, which can include various sections.",
+                    "properties": {
+                        "sections": {
+                            "type": "integer",
+                            "description": "Number of sections in the report."
+                        },
+                        "data_tables": {
+                            "type": "integer",
+                            "description": "Content of the section."
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "Additional notes for the inventory."
+                        }
+                    },
+                    "required": ["sections", "data_tables"]
+                }
+            }
+        },
+        "sections": {
+            "minItems": 1,
+            "type": "array",
+            "description": "Array of sections in the report.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Title of the section."
+                    },
+                    "tables": {
+                        "type": "array",
+                        "minItems": 1,
+                        "description": "Names of the data tables in the section.",
+                        "items": {
+                            "type": "string",
+                            "description": "Name of the data table."
+                        }
+                    }
+                }
+            }
+        },
+        "data_tables": {
+            "type": "object",
+            "description": "Data tables in the report, each identified by a unique key.",
+            "patternProperties": {
+                "^[a-zA-Z0-9_]+$": {
+                    "type": "object",
+                    "description": "unique id of the data table.",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "Title of the data table."
+                        },
+                        "columns": {
+                            "type": "array",
+                            "description": "Array of column names for the data table.",
+                            "minItems": 1,
+                            "items": {
+                                "type": "string",
+                                "description": "Name of a column in the data table."
+                            }
+                        },
+                        "n_rows": {
+                            "type": "integer",
+                            "description": "Number of rows in the data table."
+                        },
+                        "default_order": {
+                            "type": "array",
+                            "description": "Default order of the data table.",
+                            "items": {
+                                "type": "array"
+                            }
+                        },
+                        "rows": {
+                            "type": "array",
+                            "minItems": 1,
+                            "description": "Array of data rows for the table.",
+                            "items": {
+                                "type": "array",
+                                "minItems": 1,
+                                "description": "A single row of data in the table.",
+                                "items": {
+                                    "type": ["string", "number", "boolean", "null"],
+                                    "description": "Value for a column in the row."
+                                }
+                            }
+                        }
+                    },
+                    "required": ["title", "columns", "n_rows", "rows"]
+                }
+            }
+        }
+    }
+}

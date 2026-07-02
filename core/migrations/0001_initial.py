@@ -348,7 +348,6 @@ class Migration(migrations.Migration):
             name='ReportCache',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('report_key', models.CharField(max_length=255, unique=True)),
                 ('summary_name', models.CharField(max_length=255)),
                 ('scope_key', models.CharField(max_length=255)),
                 ('filters', models.JSONField()),

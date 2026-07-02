@@ -91,8 +91,9 @@ def capabilities_view(request):
     request=serializers.PostReportQuerySerializer,
     responses={201: dict, 400: serializers.ErrorSerializer, 403: serializers.ErrorSerializer},
 )
-@permission_classes([IsRootUserForPost])
 @api_view(["GET", "POST"])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsRootUserForPost])
 def full_report_view(request):
     if request.method == "POST":
         serializer = serializers.PostReportQuerySerializer(data=request.data)

@@ -108,10 +108,9 @@ class ReportQuerySerializer(serializers.Serializer):
     summary_name = serializers.CharField(required=False, allow_blank=True)
 
 class PostReportQuerySerializer(serializers.Serializer):
-    report_key = serializers.IntegerField()
     summary_name = serializers.CharField()
     scope_key = serializers.CharField()
-    filters_hash = serializers.CharField()
+    filters_hash = serializers.CharField(allow_null=True)
     filters = serializers.JSONField(allow_null=True)
     payload = serializers.JSONField(required=True)
     created_at = serializers.DateField()

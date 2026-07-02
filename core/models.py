@@ -199,7 +199,6 @@ class FactMeasurementCategoricalByAgeSex(CategoricalMeasurementBase):
         db_table = "fact_measurement_categorical_by_age_sex"
 
 class ReportCache(DashboardModel):
-    report_key = models.CharField(max_length=255, primary_key=True)
     summary_name = models.CharField(max_length=255, null=True)
     scope_key = models.CharField(max_length=255, null=True)
     filters_hash = models.CharField(max_length=255, null=True)
