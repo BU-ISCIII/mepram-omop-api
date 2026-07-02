@@ -62,10 +62,6 @@ MEPRAM_CREATE_DEFAULT_SUPERUSER=true
 DJANGO_SUPERUSER_USERNAME=admin
 DJANGO_SUPERUSER_EMAIL=admin@example.org
 DJANGO_SUPERUSER_PASSWORD=admin_pass
-MEPRAM_KEYCLOAK_ISSUER=http://<keycloak-host>:8089/realms/ciberisciii_datahub
-MEPRAM_KEYCLOAK_JWKS_URL=http://<keycloak-host>:8089/realms/ciberisciii_datahub/protocol/openid-connect/certs
-MEPRAM_KEYCLOAK_AUDIENCE=mepram-api
-MEPRAM_KEYCLOAK_CLIENT_ID=pathocore-web
 ```
 
 #### 3. Build And Start
@@ -167,49 +163,6 @@ Stop the containers and remove the database volume:
 
 ```bash
 docker compose -f docker-compose.test.yml down -v
-```
-
-## Security
-
-The data API follows the same security direction as PathoCore services:
-Keycloak-issued Bearer JWTs for `/v1` data endpoints and Django staff/session
-login for interactive documentation.
-
-Runtime switches:
-
-- `MEPRAM_AUTH_REQUIRED=true`: protects all `/v1` endpoints except
-  `/v1/health` with `Authorization: Bearer <jwt>`.
-- `MEPRAM_DOCS_REQUIRE_STAFF=true`: protects `/v1/swagger/` and `/v1/openapi/`
-  with Django staff login. `/swagger/` redirects to the versioned Swagger URL.
-- `MEPRAM_CREATE_DEFAULT_SUPERUSER=true`: creates or updates the local Django
-  superuser configured with `DJANGO_SUPERUSER_*` after migrations. In the test
-  stack this gives Swagger/admin access with `admin / admin_pass`.
-- `MEPRAM_KEYCLOAK_ISSUER`: expected JWT issuer.
-- `MEPRAM_KEYCLOAK_JWKS_URL`: JWKS URL reachable from the API container. In the
-  VM deployment this can point to the published Keycloak port, for example
-  `http://172.20.10.47:8089/.../certs`.
-  If `pathocore-web` and `mepram-api` run in separate Compose projects, either
-  publish Keycloak on a reachable host port or attach `mepram_api` to the
-  Keycloak Docker network and use the Keycloak container DNS name in this URL.
-- `MEPRAM_KEYCLOAK_AUDIENCE`: expected JWT audience, recommended `mepram-api`.
-- `MEPRAM_KEYCLOAK_CLIENT_ID`: frontend/client identifier, usually
-  `pathocore-web`.
-
-Swagger/OpenAPI access in the test stack:
-
-```text
-admin / admin_pass
-```
-
-For non-test deployments, either set `MEPRAM_CREATE_DEFAULT_SUPERUSER=false` and
-create staff users manually, or override `DJANGO_SUPERUSER_USERNAME`,
-`DJANGO_SUPERUSER_EMAIL` and `DJANGO_SUPERUSER_PASSWORD`.
-
-Example authenticated request:
-
-```bash
-curl -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  http://127.0.0.1:8100/v1/cohort/summary
 ```
 
 ## API Reference
@@ -466,6 +419,7 @@ Covered by `dashboard.sql`:
 - concept aggregates
 - numeric and categorical measurements
 - age, sex and age+sex stratifications
+- report aggregates
 
 Not covered by `dashboard.sql`:
 
