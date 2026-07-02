@@ -171,6 +171,15 @@ class EndpointSecurityTests(SimpleTestCase):
 
 @override_settings(MEPRAM_AUTH_REQUIRED=False, ALLOWED_HOSTS=["testserver"])
 class ReportsEndpointTests(SimpleTestCase):
+    def test_full_report_post_requires_superuser(self):
+        response = Client().post(
+            "/v1/cohort/report",
+            data={"summary_name": "Test report"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
     def test_full_report_endpoint_returns_report_payload(self):
         test_payload = {
             "summary_name": "Descriptive Report from June",
