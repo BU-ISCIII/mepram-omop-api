@@ -170,9 +170,27 @@ class EndpointSecurityTests(SimpleTestCase):
 
 
 @override_settings(MEPRAM_AUTH_REQUIRED=False, ALLOWED_HOSTS=["testserver"])
-class ReportsEndpointTests(SimpleTestCase):
+class ReportsEndpointTests(TestCase):
     def test_full_report_post_requires_superuser(self):
         response = Client().post(
+            "/v1/cohort/report",
+            data={"summary_name": "Test report"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_full_report_post_rejects_non_superuser(self):
+        user = get_user_model().objects.create_user(
+            username="regular-user",
+            password="secret",
+            is_superuser=False,
+            is_staff=False,
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
             "/v1/cohort/report",
             data={"summary_name": "Test report"},
             content_type="application/json",
@@ -238,7 +256,7 @@ class ReportsEndpointTests(SimpleTestCase):
             "updated_at": "2026-07-01T12:00:00Z",
         }
         
-        with patch("core.api.v1.views.reports.full_report", return_value=test_payload):
+        with patch("core.api.v1.views.reports.report", return_value=test_payload):
             response = Client().get("/v1/cohort/report")
 
         self.assertEqual(response.status_code, 200)
