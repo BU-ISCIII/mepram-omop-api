@@ -3,7 +3,10 @@ from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
+
+from core.api.permissions import IsRootUserForPost
 
 from core.api.services import (
     cohort,
@@ -67,19 +70,41 @@ def capabilities_view(request):
 
 
 @extend_schema(
+    methods=["GET"],
     tags=[TAG_DASHBOARD],
     summary="Full descriptive report of one or multiple cohort",
     description='Retrieves available reports from the cohorts',
-    responses={200: dict},
+    responses={200: dict, 403: serializers.ErrorSerializer},
     parameters=[
         OpenApiParameter("limit", int, required=False, default=20),
         OpenApiParameter("start_date", OpenApiTypes.DATE, required=False, default="1980-01-01", description="Earliest start date of report submission until today, in YYYY-MM-DD format. If used alongside end_date, it will return all the reports in a date range."),
         OpenApiParameter("end_date", OpenApiTypes.DATE, required=False, default="3000-01-01", description="Latest end date of report submission, in YYYY-MM-DD format. If used alongside start_date, it will return all the reports in a date range."),
-        OpenApiParameter("summary_name", str, required=False, description="Name of the report.")
-    ]
+        OpenApiParameter("summary_name", str, required=False, description="Name of the report."),
+    ],
 )
-@api_view(["GET"])
+@extend_schema(
+    methods=["POST"],
+    tags=[TAG_DASHBOARD],
+    summary="Save a report",
+    description="Stores a report payload for the authenticated superuser.",
+    auth=[{"cookieAuth": []}, {"bearerAuth": []}],
+    request=serializers.PostReportQuerySerializer,
+    responses={201: dict, 400: serializers.ErrorSerializer, 403: serializers.ErrorSerializer},
+)
+@permission_classes([IsRootUserForPost])
+@api_view(["GET", "POST"])
 def full_report_view(request):
+    if request.method == "POST":
+        serializer = serializers.PostReportQuerySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            reports.save_report(serializer.validated_data)
+        except Exception as e:
+            return Response(
+                {"detail": f"Error saving report: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({"detail": "Report saved successfully."}, status=status.HTTP_201_CREATED)   
     params = _validated(serializers.ReportQuerySerializer, request.query_params)
     return Response(reports.report(params), status=status.HTTP_200_OK)
 
