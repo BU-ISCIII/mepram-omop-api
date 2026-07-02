@@ -30,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 #### Fixes
 
 - Fixed installation location to point to /srv and test ports to point to 8000/3000 [#3](https://github.com/BU-ISCIII/mepram-omop-api/pull/3)
+- Fixed README to remove Keycloak and other security aspects [#14](https://github.com/BU-ISCIII/mepram-omop-api/pull/14)
+
 
 #### Changed
 
