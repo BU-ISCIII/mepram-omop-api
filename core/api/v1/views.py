@@ -72,7 +72,7 @@ def capabilities_view(request):
 @extend_schema(
     methods=["GET"],
     tags=[TAG_DASHBOARD],
-    summary="Full descriptive report of one or multiple cohort",
+    summary="Retrieve reports",
     description='Retrieves available reports from the cohorts',
     responses={200: dict, 403: serializers.ErrorSerializer},
     parameters=[
@@ -86,7 +86,7 @@ def capabilities_view(request):
     methods=["POST"],
     tags=[TAG_DASHBOARD],
     summary="Save a report",
-    description="Stores a report payload for the authenticated superuser.",
+    description="Stores a report. Only superusers can save reports.",
     auth=[{"cookieAuth": []}, {"bearerAuth": []}],
     request=serializers.PostReportQuerySerializer,
     responses={201: dict, 400: serializers.ErrorSerializer, 403: serializers.ErrorSerializer},
