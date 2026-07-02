@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-07-02 : <https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.1>
+
+### Credits
+
+- [Alejandro Bernabeu](https://github.com/aberdur)
+- [Enrique Sapena](https://github.com/ESapenaVentura)
+
+#### Added enhancements
+
+- Added protected POST endpoint for reports [#15](https://github.com/BU-ISCIII/mepram-omop-api/pull/15)
+
+#### Fixes
+
+- Fixed missing files in release 1.0.0
+
+#### Changed
+
+#### Removed
+
+### Requirements
+
 ## [1.0.0] - 2026-07-02 : <https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.0>
 
 ### Credits
