@@ -106,3 +106,13 @@ class ReportQuerySerializer(serializers.Serializer):
     start_date = serializers.DateField(required=False, default="1980-01-01")
     end_date = serializers.DateField(required=False, default="3000-01-01")
     summary_name = serializers.CharField(required=False, allow_blank=True)
+
+class PostReportQuerySerializer(serializers.Serializer):
+    report_key = serializers.IntegerField()
+    summary_name = serializers.CharField()
+    scope_key = serializers.CharField()
+    filters_hash = serializers.CharField()
+    filters = serializers.JSONField(allow_null=True)
+    payload = serializers.JSONField(required=True)
+    created_at = serializers.DateField()
+    updated_at = serializers.DateField()
