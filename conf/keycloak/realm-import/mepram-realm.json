@@ -14,8 +14,8 @@
       "protocol": "openid-connect"
     },
     {
-      "clientId": "pathocore-web",
-      "name": "PathoCore Web",
+      "clientId": "mepram-web",
+      "name": "MePRAM Web",
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,

@@ -241,34 +241,34 @@ validate_application_runtime() {
 
     # Keep malformed throttle values from reaching DRF, where they would fail
     # only after the service starts handling requests.
-    : "${PUBLIC_API_THROTTLE_RATE:=500/hour}"
-    [[ "$PUBLIC_API_THROTTLE_RATE" =~ ^[1-9][0-9]*/(second|minute|hour|day)s?$ ]] \
-        || die "PUBLIC_API_THROTTLE_RATE must use DRF format, for example 500/hour"
+    : "${API_THROTTLE_RATE:=500/hour}"
+    [[ "$API_THROTTLE_RATE" =~ ^[1-9][0-9]*/(second|minute|hour|day)s?$ ]] \
+        || die "API_THROTTLE_RATE must use DRF format, for example 500/hour"
 
     # Authentication is optional for isolated test deployments. When enabled,
     # validate every value needed to verify Keycloak tokens before migrations
     # and service startup proceed.
-    case "${MEPRAM_AUTH_REQUIRED:-false}" in
+    case "${OIDC_AUTH_REQUIRED:-false}" in
         true|True|TRUE|1|yes|Yes|YES|on|On|ON)
-            : "${MEPRAM_KEYCLOAK_ISSUER:?MEPRAM_KEYCLOAK_ISSUER is required when authentication is enabled}"
-            : "${MEPRAM_KEYCLOAK_JWKS_URL:?MEPRAM_KEYCLOAK_JWKS_URL is required when authentication is enabled}"
-            : "${MEPRAM_KEYCLOAK_AUDIENCE:?MEPRAM_KEYCLOAK_AUDIENCE is required when authentication is enabled}"
-            : "${MEPRAM_KEYCLOAK_CLIENT_ID:?MEPRAM_KEYCLOAK_CLIENT_ID is required when authentication is enabled}"
-            [[ "$MEPRAM_KEYCLOAK_ISSUER" =~ ^https?:// ]] \
-                || die "MEPRAM_KEYCLOAK_ISSUER must be an HTTP(S) URL"
-            [[ "$MEPRAM_KEYCLOAK_JWKS_URL" =~ ^https?:// ]] \
-                || die "MEPRAM_KEYCLOAK_JWKS_URL must be an HTTP(S) URL"
+            : "${OIDC_ISSUER:?OIDC_ISSUER is required when authentication is enabled}"
+            : "${OIDC_JWKS_URL:?OIDC_JWKS_URL is required when authentication is enabled}"
+            : "${OIDC_AUDIENCE:?OIDC_AUDIENCE is required when authentication is enabled}"
+            : "${OIDC_CLIENT_ID:?OIDC_CLIENT_ID is required when authentication is enabled}"
+            [[ "$OIDC_ISSUER" =~ ^https?:// ]] \
+                || die "OIDC_ISSUER must be an HTTP(S) URL"
+            [[ "$OIDC_JWKS_URL" =~ ^https?:// ]] \
+                || die "OIDC_JWKS_URL must be an HTTP(S) URL"
             ;;
         false|False|FALSE|0|no|No|NO|off|Off|OFF) ;;
-        *) die "MEPRAM_AUTH_REQUIRED must be a boolean value" ;;
+        *) die "OIDC_AUTH_REQUIRED must be a boolean value" ;;
     esac
 
-    : "${MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS:=300}"
-    : "${MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS:=5}"
-    [[ "$MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS" =~ ^[1-9][0-9]*$ ]] \
-        || die "MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS must be a positive integer"
-    [[ "$MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
-        || die "MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS must be a positive integer"
+    : "${OIDC_JWKS_CACHE_TTL_SECONDS:=300}"
+    : "${OIDC_JWKS_TIMEOUT_SECONDS:=5}"
+    [[ "$OIDC_JWKS_CACHE_TTL_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+        || die "OIDC_JWKS_CACHE_TTL_SECONDS must be a positive integer"
+    [[ "$OIDC_JWKS_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+        || die "OIDC_JWKS_TIMEOUT_SECONDS must be a positive integer"
 }
 
 before_django_migrate() {

@@ -119,26 +119,26 @@ MEPRAM_DASHBOARD_SCHEMA = os.environ.get(
 # Browser clients are served independently from this API. This allow-list is
 # intentionally separate from Django's CSRF origins because the API can be
 # read-only and token-authenticated while the admin still uses CSRF protection.
-MEPRAM_CORS_ALLOWED_ORIGINS = env_list("MEPRAM_CORS_ALLOWED_ORIGINS")
+MEPRAM_CORS_ALLOWED_ORIGINS = env_list("API_CORS_ALLOWED_ORIGINS")
 
 # Authentication can be disabled for isolated local/test environments. When
 # enabled, every API request must carry a Keycloak-issued RS256 bearer token.
-MEPRAM_AUTH_REQUIRED = env_bool("MEPRAM_AUTH_REQUIRED", False)
-MEPRAM_DOCS_REQUIRE_STAFF = env_bool("MEPRAM_DOCS_REQUIRE_STAFF", True)
+MEPRAM_AUTH_REQUIRED = env_bool("OIDC_AUTH_REQUIRED", False)
+MEPRAM_DOCS_REQUIRE_STAFF = env_bool("API_DOCS_REQUIRE_STAFF", True)
 
 # Keycloak identity and verification endpoints. Production validation should
 # require all four identity values whenever MEPRAM_AUTH_REQUIRED is enabled.
-MEPRAM_KEYCLOAK_ISSUER = os.environ.get("MEPRAM_KEYCLOAK_ISSUER", "")
-MEPRAM_KEYCLOAK_JWKS_URL = os.environ.get("MEPRAM_KEYCLOAK_JWKS_URL", "")
-MEPRAM_KEYCLOAK_AUDIENCE = os.environ.get("MEPRAM_KEYCLOAK_AUDIENCE", "mepram-api")
+MEPRAM_KEYCLOAK_ISSUER = os.environ.get("OIDC_ISSUER", "")
+MEPRAM_KEYCLOAK_JWKS_URL = os.environ.get("OIDC_JWKS_URL", "")
+MEPRAM_KEYCLOAK_AUDIENCE = os.environ.get("OIDC_AUDIENCE", "mepram-api")
 MEPRAM_KEYCLOAK_CLIENT_ID = os.environ.get(
-    "MEPRAM_KEYCLOAK_CLIENT_ID", "pathocore-web"
+    "OIDC_CLIENT_ID", "pathocore-web"
 )
 MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS = int(
-    os.environ.get("MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS", "300")
+    os.environ.get("OIDC_JWKS_CACHE_TTL_SECONDS", "300")
 )
 MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS = int(
-    os.environ.get("MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS", "5")
+    os.environ.get("OIDC_JWKS_TIMEOUT_SECONDS", "5")
 )
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -194,7 +194,7 @@ EMAIL_USE_TLS = emailhosttls
 # Apply the same configurable throttle to anonymous and authenticated clients.
 # This protects aggregate endpoints without embedding an environment-specific
 # rate in the generated Python settings file.
-PUBLIC_API_THROTTLE_RATE = os.environ.get("PUBLIC_API_THROTTLE_RATE", "500/hour")
+PUBLIC_API_THROTTLE_RATE = os.environ.get("API_THROTTLE_RATE", "500/hour")
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": (
