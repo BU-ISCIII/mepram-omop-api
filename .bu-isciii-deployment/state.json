@@ -45,7 +45,7 @@
     "conf/keycloak/keycloak_production_settings.txt": "dc9ad5336aa14d1141e129d311a4074122d3f6e7e7f7ba48559e09b1f2ea4a1c",
     "conf/keycloak/keycloak_test_settings.txt": "cc7497b433e8c1ee664cd2060d3eea2a369cc751e87db715e89679389a50a2c8",
     "conf/template_settings.py": "54a94220667ea8b8f168ca4594e29ed0aade129aa41187cba53886f575bb0d4d",
-    "container_install.sh": "80c1b14e4aab635a9fac177c1b18419f52b456ea3c2f54ac8cc7ee6c34669d85",
+    "container_install.sh": "1905c842ca401ed2288882e30100bad2bd721783aef0cba3b166dd87d9732337",
     "deployment_health/README.md": "3d7c4295938708813369deeac9edc0eb8fe2153c77d03f9138febf3aed715aa5",
     "deployment_health/__init__.py": "bedcff132309f8970b1ca72fcea20c7cb38bb727d48f82d96dbf7104922abda0",
     "deployment_health/urls.py": "8d274b44d326f26d71b05021a34969c742478efbe47691aadd8c3a90ba16f340",
