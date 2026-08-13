@@ -1,0 +1,60 @@
+{
+  "config": {
+    "ADDONS": {
+      "apache": {
+        "CONFIG_SERVICE": "app"
+      },
+      "keycloak": {
+        "CONFIG_SERVICE": "app"
+      }
+    },
+    "APP_NAME": "MePRAM OMOP API",
+    "APP_SLUG": "mepram-omop-api",
+    "DEFAULT_BRANCH": "main",
+    "DESCRIPTION": "Read-only Django REST API for aggregated MePRAM dashboard data generated from OMOP data.",
+    "PYTHON_VERSION": "3.12",
+    "REPOSITORY_URL": "https://github.com/BU-ISCIII/mepram-omop-api.git",
+    "SERVICES": {
+      "app": {
+        "BUILD_CONTEXT": ".",
+        "DOCKERFILE": "Dockerfile",
+        "IMAGE": "mepram-omop-api:local",
+        "INSTALL_CONF": "conf/docker_production_settings.txt",
+        "PROFILE": "django",
+        "PROJECT_MODULE": "conf",
+        "TEST_INSTALL_CONF": "conf/docker_test_settings.txt"
+      }
+    },
+    "TIMEZONE": "Europe/Madrid"
+  },
+  "files": {
+    ".dockerignore": "a76e2a974786736d1d3744ed534ae9996514cb15d921328450f3757fafe273d2",
+    ".gitignore": "86a6d029356710031e592d78821b3c5a2ef0bc510fa746703bfcef56ea10fc15",
+    "Dockerfile": "ea6c802f6159dd5b234251d7c2627bf693b726d904c9166fb7adfca0b15fcc18",
+    "LEAME.md": "ac6579efbe87f41c7e3742287923c1cf5fa714afaf7940e4890de7d0516bbb9c",
+    "README.md": "d91064346f36ac0863d632d73ab4cbc02e97d659c87be8d1d6db4f2f82341ef6",
+    "conf/INSTALL_SETTINGS.md": "3c00eca0d27cd1e8e1724717aed45a12ad24811a4bdc28a447d38f2eb23c7a99",
+    "conf/apache/00-logs.conf": "3c2ab4e693e528d2cad37c0c5bb0bc4511803a7f206b339182de192d4e398092",
+    "conf/apache/01-reverse-proxy.conf": "f55f380ad3e942b7a756032920bb9aa6b0264cb40f1b766097875d20a82c501c",
+    "conf/apache/02-server-status.conf": "c3b5d26f9b551083faf0d85b188bfa9c577ff0bd3b805f0ec104fe4f7d5101cb",
+    "conf/apache/apache_production_settings.txt": "26c6d6daf7ceaab808f138c365bf21d3e357bea433a83b6d33c7dcce7be0d69c",
+    "conf/apache/apache_test_settings.txt": "eceaad3c35e08212c609475e025a1ad0e2fcb69e879d5e95be9c9d18c9fe00ee",
+    "conf/docker_production_settings.txt": "45fd210f7d4d080b3664aadaeb88975ebbc11c737eefa6b54a7db325ffe14d6b",
+    "conf/docker_test_settings.txt": "76eccf0a480d878ee497b9a388ed9fa25461ba54d5fe848975c45185e5deb95f",
+    "conf/keycloak/keycloak_production_settings.txt": "dc9ad5336aa14d1141e129d311a4074122d3f6e7e7f7ba48559e09b1f2ea4a1c",
+    "conf/keycloak/keycloak_test_settings.txt": "cc7497b433e8c1ee664cd2060d3eea2a369cc751e87db715e89679389a50a2c8",
+    "conf/template_settings.py": "1770489e94428cf38e4974baf28da3936b08c36723bcadbfb9555a2ededeba7c",
+    "container_install.sh": "7ba3f351664a03f70f16b8a17d019d68bcc6c6081b990d1f231d39330a443231",
+    "deployment_health/README.md": "3d7c4295938708813369deeac9edc0eb8fe2153c77d03f9138febf3aed715aa5",
+    "deployment_health/__init__.py": "bedcff132309f8970b1ca72fcea20c7cb38bb727d48f82d96dbf7104922abda0",
+    "deployment_health/urls.py": "8d274b44d326f26d71b05021a34969c742478efbe47691aadd8c3a90ba16f340",
+    "deployment_health/views.py": "d19cc3e8fef8519bae2b7fbdc25d17f6ae7df02479aa8890f4b4d250bb07f2e4",
+    "docker-compose.prod.yml": "4f2e30d9dbb77869efcdb42a1ca06d043d9b354e41ee747d0f7df6d3e586dea7",
+    "docker-compose.test.yml": "3b9201be053f3e166cce6870d7bbbb4d76cd2f6acd130f87be33478f3b694667",
+    "install.sh": "41c92f4e4e4add2f5ee3921bee251bf02ed8c563f8ac46fefb2aa76faa868c5c",
+    "scripts/container_start.sh": "3a48216376b205a6dfa065861cba80e1d3751346d59410b6a407a3b290e2603d",
+    "scripts/smoke_test.sh": "1674c51761f2390f0b660a88d7dc2d731ee93ad87f57ada613e5c0a0cfb9c5e8"
+  },
+  "source": "BU-ISCIII deployment standards",
+  "standard_version": "0.1.0"
+}

@@ -203,6 +203,17 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Local deployment configuration and generated synchronization candidates
+.env.*.file
+conf/production_settings.txt
+my_prod_settings*.txt
+*.bu-isciii-update
+deployment/apache/*.conf
+deployment/settings/
+virtualenv/
+logs/
+documents/
+
 # Ruff stuff:
 .ruff_cache/
 

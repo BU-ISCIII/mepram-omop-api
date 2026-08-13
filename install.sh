@@ -1,584 +1,441 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-APP_VERSION="1.0.0"
+install_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$install_script_dir"
+# shellcheck disable=SC1091
+source "$install_script_dir/deployment/lib/container/common.sh"
+# shellcheck disable=SC1091
+source "$install_script_dir/deployment/lib/container/django.sh"
+
+APP_VERSION="0.2.0"
+ACTION="install"
+OPERATION_SCOPE="full"
+WORKFLOW="standard"
+GIT_REVISION="current"
+INSTALL_CONF="./install_settings.txt"
+LOAD_TABLES="false"
+SKIP_TABLES="false"
+SKIP_APACHE_RESTART="false"
+SCRIPT_BEFORE=()
+SCRIPT_AFTER=()
+RENDER_SETTINGS="auto"
+SETTINGS_OUTPUT=""
+INITIAL_GIT_REF=""
 
 usage() {
-cat << EOF
-This script installs and upgrades the MePRAM API application.
+    cat <<'EOF'
+Install, stage, or bootstrap MePRAM OMOP API.
 
-usage : $0 --upgrade --git_revision --conf
-    Optional input data:
-    --install             | Install MePRAM API full/dep/app
-    --upgrade             | Upgrade MePRAM API full/dep/app
-    --stage               | Stage app files only (install/upgrade) without DB work. Internal/container use.
-    --bootstrap           | Run DB/bootstrap steps only (install/upgrade) against an existing staged app. Internal/container use.
-    --git_revision        | Git revision name to run (branch, tag, commit SHA, or 'current' to use copied local sources as-is)
-    --conf                | Select custom configuration file. Default: ./install_settings.txt
-    --dashboard_sql       | Import dashboard.sql after migrations
-    --skip_dashboard_sql  | Skip dashboard.sql import
-    --docker              | Deprecated. Use --skip_apache_restart to avoid Apache checks/restart.
+Usage: ./install.sh [options]
+
+  --install full|dep|app       Install dependencies, application, or both.
+  --upgrade full|dep|app       Upgrade dependencies, application, or both.
+  --stage install|upgrade      Stage an immutable image; never touch the DB.
+  --bootstrap install|upgrade  Bootstrap an already staged application.
+  --git_revision <revision>    Branch, tag, commit, or current (default).
+  --conf <path>                Normalized installation settings file.
+  --render-settings            Render Django settings during staging.
+  --settings-output <path>     Override the rendered settings destination.
+  --tables                     Load conf/first_install_tables.json.
+  --skip_tables                Never load the initial fixture.
+  --script_before <name[,args]>  Repeatable pre-migrate django-extensions hook.
+  --script_after <name[,args]>   Repeatable post-migrate hook.
+  --script <name[,args]>       Alias for --script_after.
+  --docker                     Deprecated alias for --skip_apache_restart.
+  --skip_apache_restart        Do not restart a host Apache service.
+  --help
+  --version
 
 Examples:
-    Install only software dependencies for MePRAM API
-    sudo $0 --install dep
-
-    Install only MePRAM API app
-    $0 --install app
-
-    Upgrade using develop code
-    $0 --upgrade full --git_revision develop
-
-    Stage application files during a container image build
-    $0 --stage install --git_revision develop --conf conf/docker_test_settings.txt
-
-    Bootstrap database/static using an already staged container image
-    $0 --bootstrap upgrade --git_revision develop --conf conf/docker_test_settings.txt
-
-    Bootstrap and import dashboard data
-    $0 --bootstrap install --conf conf/docker_test_settings.txt --dashboard_sql /data/dashboard.sql
+  ./install.sh --install full --conf conf/docker_test_settings.txt --tables
+  ./install.sh --upgrade app --git_revision v2.0.0 --script_before prepare_v2
+  ./install.sh --stage install --conf conf/docker_test_settings.txt --render-settings
+  ./install.sh --bootstrap upgrade --conf /tmp/runtime_install_settings.txt
 EOF
 }
 
-_log_compose_entry() {
-    local level="$1"; shift
-    local message="$*"
-    local timestamp
-    timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-    printf "%s [%s] %s" "$timestamp" "$level" "$message"
-}
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+info() { printf 'INFO: %s\n' "$*"; }
+command_required() { command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"; }
 
-log() {
-    local level="$1"; shift
-    printf "%s\n" "$(_log_compose_entry "$level" "$*")"
-}
+while (($#)); do
+    case "$1" in
+        --git_revision) GIT_REVISION="${2:-}"; shift 2 ;;
+        --conf) INSTALL_CONF="${2:-}"; shift 2 ;;
+        --render-settings) RENDER_SETTINGS="true"; shift ;;
+        --settings-output) SETTINGS_OUTPUT="${2:-}"; shift 2 ;;
+        --stage|--bootstrap)
+            WORKFLOW="${1#--}"
+            [[ "${2:-}" =~ ^(install|upgrade)$ ]] || die "$1 requires install or upgrade"
+            ACTION="$2"; OPERATION_SCOPE="app"; shift 2
+            ;;
+        --install|--upgrade)
+            ACTION="${1#--}"; WORKFLOW="standard"
+            [[ "${2:-}" =~ ^(full|dep|app)$ ]] || die "$1 requires full, dep, or app"
+            OPERATION_SCOPE="$2"; shift 2
+            ;;
+        --script_before) [[ -n "${2:-}" ]] || die "$1 requires a value"; SCRIPT_BEFORE+=("$2"); shift 2 ;;
+        --script_after|--script) [[ -n "${2:-}" ]] || die "$1 requires a value"; SCRIPT_AFTER+=("$2"); shift 2 ;;
+        --tables) LOAD_TABLES="true"; shift ;;
+        --skip_tables) SKIP_TABLES="true"; LOAD_TABLES="false"; shift ;;
+        --docker|--skip_apache_restart) SKIP_APACHE_RESTART="true"; shift ;;
+        --help) usage; exit 0 ;;
+        --version) echo "$APP_VERSION"; exit 0 ;;
+        *) die "Unknown option: $1" ;;
+    esac
+done
 
-log_section() {
-    local message="$1"
-    log "INFO" "$message"
-    printf "\n\n%s\n" "${YELLOW}------------------${NC}"
-    printf "%b\n" "${YELLOW}${message}${NC}"
-    printf "%s\n\n" "${YELLOW}------------------${NC}"
-}
+[[ "$WORKFLOW" != "stage" || ${#SCRIPT_BEFORE[@]} -eq 0 && ${#SCRIPT_AFTER[@]} -eq 0 ]] \
+    || die "Migration scripts cannot run during the stage workflow"
+[[ -f "$INSTALL_CONF" ]] || die "Configuration not found: $INSTALL_CONF"
+if [[ "$INSTALL_CONF" != /* ]]; then
+    INSTALL_CONF="$(cd "$(dirname "$INSTALL_CONF")" && pwd)/$(basename "$INSTALL_CONF")"
+fi
+if [[ "$WORKFLOW" != "stage" ]] && grep -Eq "^[A-Z0-9_]+=.*CHANGE_ME" "$INSTALL_CONF"; then
+    die "Configuration still contains CHANGE_ME values"
+fi
+# shellcheck disable=SC1090
+source "$INSTALL_CONF"
+: "${INSTALL_PATH:?INSTALL_PATH is required}"
+: "${PROJECT_MODULE:?PROJECT_MODULE is required}"
+[[ "$PROJECT_MODULE" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] \
+    || die "PROJECT_MODULE must be a valid Python package name"
+: "${PYTHON_BIN_PATH:?PYTHON_BIN_PATH is required}"
+: "${DB_HOST:?DB_HOST is required}"
+: "${DB_PORT:?DB_PORT is required}"
+: "${DB_NAME:?DB_NAME is required}"
+: "${DB_USER:?DB_USER is required}"
+: "${DB_PASSWORD:?DB_PASSWORD is required}"
+REQUIRED_MODULES="${REQUIRED_MODULES:-}"
+MIGRATION_MODULES="${MIGRATION_MODULES:-}"
 
-log_info() {
-    printf "%b\n" "${BLUE}$(_log_compose_entry "INFO" "$1")${NC}"
-}
+if [[ "$RENDER_SETTINGS" == "auto" ]]; then
+    [[ "$WORKFLOW" == "standard" ]] && RENDER_SETTINGS="true" || RENDER_SETTINGS="false"
+fi
 
-log_warn() {
-    printf "%b\n" "${CYAN}$(_log_compose_entry "WARN" "$1")${NC}"
-}
-
-log_error() {
-    printf "%b\n" "${RED}$(_log_compose_entry "ERROR" "$1")${NC}"
-}
-
-abort_install() {
-    log_error "$1"
-    exit "${2:-1}"
-}
-
-ensure_file_exists() {
-    local file_path="$1"
-    local friendly_name="${2:-$1}"
-    if [ ! -f "$file_path" ]; then
-        abort_install "Required file '$friendly_name' not found."
-    fi
-}
-
-python_check() {
-    local python_version
-    python_version=$($PYTHON_BIN_PATH --version 2>&1 || true)
-    if [[ $python_version == "" ]]; then
-        abort_install "Python3 is not found in your system"
-    fi
-    local major minor
-    major=$(echo "$python_version" | awk '{print $2}' | cut -d"." -f1)
-    minor=$(echo "$python_version" | awk '{print $2}' | cut -d"." -f2)
-    if (( major < 3 || (major == 3 && minor < 10) )); then
-        abort_install "MePRAM API requires at least Python 3.10. Found: $python_version"
-    fi
-}
-
-root_check() {
-    if [[ $EUID -ne 0 ]]; then
-        abort_install "Exiting installation. This script must be run as root for dependency installation"
-    fi
-}
-
-db_check() {
-    log "INFO" "Checking database connectivity against ${MEPRAM_DB_HOST:-localhost}:${MEPRAM_DB_PORT:-3306}"
-    $PYTHON_BIN_PATH - << PY
-import os
-import MySQLdb
-
-conn = MySQLdb.connect(
-    host=os.environ.get("MEPRAM_DB_HOST", "localhost"),
-    port=int(os.environ.get("MEPRAM_DB_PORT", "3306")),
-    user=os.environ.get("MEPRAM_DB_USER", "mepram"),
-    passwd=os.environ.get("MEPRAM_DB_PASSWORD", "mepram_password"),
-    db=os.environ.get("MEPRAM_DB_NAME", "mepram_omop_api"),
-)
-conn.close()
-PY
-}
-
-install_system_packages() {
-    if [ "${SKIP_SYSTEM_PACKAGES:-}" = "1" ]; then
-        echo "Skipping system package installation (SKIP_SYSTEM_PACKAGES=1)"
-        return
-    fi
-
-    if command -v apt-get >/dev/null 2>&1; then
-        echo "Software installation for Debian/Ubuntu"
-        apt-get update
-        apt-get install -y \
-            build-essential \
-            default-libmysqlclient-dev \
-            pkg-config \
-            python3-dev \
-            python3-pip \
-            python3-venv
-    elif command -v yum >/dev/null 2>&1; then
-        echo "Software installation for CentOS/RedHat"
-        yum groupinstall -y "Development tools"
-        yum install -y \
-            mariadb-devel \
-            pkgconf-pkg-config \
-            python3-devel \
-            python3-pip
-    else
-        log_warn "No supported system package manager found. Skipping system package installation."
-    fi
-}
-
-ensure_git_safe_directory() {
-    local repo_dir
-    repo_dir="$(pwd -P)"
-
-    if ! command -v git >/dev/null 2>&1; then
-        return 0
-    fi
-
-    if [ -d "$repo_dir/.git" ] || [ -f "$repo_dir/.git" ]; then
-        git config --global --add safe.directory "$repo_dir" >/dev/null 2>&1 || true
-        git config --system --add safe.directory "$repo_dir" >/dev/null 2>&1 || true
-    fi
+remember_git_ref() {
+    git -C "$install_script_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    INITIAL_GIT_REF="$(git -C "$install_script_dir" symbolic-ref --quiet --short HEAD \
+        || git -C "$install_script_dir" rev-parse HEAD)"
 }
 
 restore_git_ref() {
-    if ! command -v git >/dev/null 2>&1; then
-        return 0
-    fi
-    if [ "${did_checkout_git_ref:-false}" = true ] && [ -n "${initial_git_ref:-}" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        echo "Restoring to initial git reference: $initial_git_ref"
-        git checkout "$initial_git_ref" --quiet || true
-    fi
+    [[ -n "$INITIAL_GIT_REF" ]] || return 0
+    git -C "$install_script_dir" checkout --quiet "$INITIAL_GIT_REF" || \
+        printf 'WARNING: could not restore git revision %s\n' "$INITIAL_GIT_REF" >&2
 }
 
 checkout_git_revision() {
-    if [[ "$git_branch" == "current" ]]; then
-        printf "${YELLOW}Using copied local working tree without git checkout.${NC}\n"
-        return 0
+    [[ "$GIT_REVISION" != "current" ]] || return 0
+    [[ -n "$INITIAL_GIT_REF" ]] || die "Cannot select $GIT_REVISION: source has no Git metadata"
+    git -C "$install_script_dir" rev-parse --verify "${GIT_REVISION}^{commit}" >/dev/null 2>&1 \
+        || die "Git revision is not available locally: $GIT_REVISION"
+    [[ -z "$(git -C "$install_script_dir" status --porcelain)" ]] \
+        || die "Commit or stash local changes before selecting $GIT_REVISION"
+    git -C "$install_script_dir" checkout --quiet "$GIT_REVISION"
+}
+
+check_python() {
+    command_required "$PYTHON_BIN_PATH"
+    "$PYTHON_BIN_PATH" -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' \
+        || die "Python 3.10 or newer is required"
+}
+
+check_required_modules() {
+    local module
+    [[ -f "$install_script_dir/conf/urls.py" ]] \
+        || die "Django URL configuration is missing: conf/urls.py"
+    grep -Fq 'deployment_health.urls' \
+        "$install_script_dir/conf/urls.py" \
+        || die "conf/urls.py must include deployment_health.urls for the /health/ endpoint"
+    for module in $REQUIRED_MODULES; do
+        [[ -e "$install_script_dir/$module" ]] || die "Required application module is missing: $module"
+    done
+}
+
+check_database() {
+    # Prefer the MySQL CLI when available; container images use mysqlclient's
+    # MySQLdb module from the application virtual environment.
+    if command -v mysql >/dev/null 2>&1; then
+        MYSQL_PWD="$DB_PASSWORD" mysql --host="$DB_HOST" --port="$DB_PORT" \
+            --user="$DB_USER" --database="$DB_NAME" --execute='SELECT 1' >/dev/null \
+            || die "Unable to connect to database $DB_NAME at $DB_HOST:$DB_PORT"
+        return
     fi
-    if ! command -v git >/dev/null 2>&1; then
-        printf "${YELLOW}Git is not installed. Using copied source tree as-is.${NC}\n"
-        return 0
-    fi
-    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        printf "${YELLOW}No git metadata found. Using copied source tree as-is.${NC}\n"
-        return 0
-    fi
-    if git rev-parse --verify "$git_branch" >/dev/null 2>&1; then
-        if [[ $git_branch != $initial_git_ref ]]; then
-            local local_changes
-            local_changes=$(git status --porcelain)
-            if [[ -n $local_changes ]]; then
-                abort_install "Unable to switch to $git_branch. Commit or stash local changes first."
-            fi
-            printf "${YELLOW}Switching to revision %s.${NC}\n" "$git_branch"
-            git checkout "$git_branch" --quiet
-            did_checkout_git_ref=true
-        else
-            printf "${YELLOW}Using current revision: '%s'.${NC}\n" "$git_branch"
-        fi
+    "$INSTALL_PATH/virtualenv/bin/python" - "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASSWORD" "$DB_NAME" <<'PY'
+import sys
+import MySQLdb
+connection = MySQLdb.connect(host=sys.argv[1], port=int(sys.argv[2]),
+    user=sys.argv[3], passwd=sys.argv[4], db=sys.argv[5])
+connection.close()
+PY
+}
+
+# ============================================================================
+# APPLICATION CUSTOMIZATION POINTS
+#
+# Keep generic lifecycle code outside this section. Each hook has a safe no-op
+# default. Add project behavior here, document why it is required, and make it
+# idempotent so a failed deployment can be retried safely.
+# ============================================================================
+
+install_application_system_packages() {
+    # Keep the Dockerfile limited to tools needed to launch this installer.
+    # Framework build headers and post-install user-management tools belong to
+    # this lifecycle and are installed before virtualenv creation.
+    [[ "${SKIP_SYSTEM_PACKAGES:-0}" != "1" ]] || return 0
+    [[ $(id -u) -eq 0 ]] || return 0
+    if [[ -f /etc/debian_version ]]; then
+        apt-get update
+        apt-get install -y --no-install-recommends \
+            build-essential pkg-config python3-dev \
+            default-libmysqlclient-dev passwd
+    elif command -v microdnf >/dev/null 2>&1; then
+        microdnf install -y \
+            gcc pkgconf-pkg-config python3.12-devel \
+            mariadb-connector-c-devel shadow-utils
+        microdnf clean all
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y \
+            gcc pkgconf-pkg-config python3.12-devel \
+            mariadb-connector-c-devel shadow-utils
     else
-        abort_install "Git reference $git_branch is not defined in ${PWD}."
+        die "Unsupported package manager for system dependency installation"
     fi
 }
 
-load_install_config() {
-    ensure_file_exists "$conf" "$conf"
-    set -a
-    # shellcheck disable=SC1090
-    . "$conf"
-    set +a
-
-    PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-python3}"
-    INSTALL_PATH="${APP_INSTALL_PATH:-${INSTALL_PATH:-/opt/mepram-api}}"
-    PROJECT_NAME="${PROJECT_NAME:-conf}"
-    REQUIRED_MODULES="${REQUIRED_MODULES:-conf core manage.py}"
-    MEPRAM_DASHBOARD_SQL="${MEPRAM_DASHBOARD_SQL:-}"
+prepare_application_directories() {
+    # Argument: final INSTALL_PATH. Create application-specific persistent
+    # directories here. Generic logs/documents/static/cron/tmp already exist.
+    # Example:
+    #   mkdir -p "$1/documents/genomic_files" "$1/logs/audit"
+    :
 }
 
-sync_requirements_file() {
-    mkdir -p "$INSTALL_PATH/conf"
-    cp conf/requirements.txt "$INSTALL_PATH/conf/requirements.txt"
+stage_application_custom_files() {
+    # Arguments: source directory, final INSTALL_PATH, action (install|upgrade).
+    # Copy application-owned files that intentionally need extra processing;
+    # the standard already installs the Django URL and optional routing files.
+    :
 }
 
-setup_virtualenv() {
-    local mode="$1"
-    cd "$INSTALL_PATH"
-    if [ "$mode" = "install" ]; then
-        if [ ! -d virtualenv ]; then
-            "$PYTHON_BIN_PATH" -m venv virtualenv
-        else
-            echo "virtualenv already defined. Skipping."
-        fi
-    else
-        if [ ! -d virtualenv ]; then
-            "$PYTHON_BIN_PATH" -m venv virtualenv
-        fi
-    fi
-    cd -
+write_application_runtime_env() {
+    # Argument: final INSTALL_PATH. Use this only when the application reads a
+    # runtime .env in addition to Django settings. Never hard-code credentials.
+    # Patho Core-style example:
+    #   umask 077
+    #   printf 'OIDC_ISSUER=%s\n' "${OIDC_ISSUER:?required}" > "$1/.env"
+    #   for key in $(compgen -A variable KEYCLOAK_ | sort); do
+    #       printf '%s=%s\n' "$key" "${!key}" >> "$1/.env"
+    #   done
+    :
 }
 
-install_python_requirements() {
-    cd "$INSTALL_PATH"
-    echo "activate the virtualenv"
-    source virtualenv/bin/activate
-    echo "Installing required python packages"
-    python -m pip install --upgrade pip
-    python -m pip install wheel
+validate_application_runtime() {
+    # Dashboard queries default to the primary DB, but an explicitly empty
+    # schema is always a deployment error.
+    : "${MEPRAM_DASHBOARD_SCHEMA:=$DB_NAME}"
+    [[ -n "$MEPRAM_DASHBOARD_SCHEMA" ]] \
+        || die "MEPRAM_DASHBOARD_SCHEMA must not be empty"
+
+    # Keep malformed throttle values from reaching DRF, where they would fail
+    # only after the service starts handling requests.
+    : "${PUBLIC_API_THROTTLE_RATE:=500/hour}"
+    [[ "$PUBLIC_API_THROTTLE_RATE" =~ ^[1-9][0-9]*/(second|minute|hour|day)s?$ ]] \
+        || die "PUBLIC_API_THROTTLE_RATE must use DRF format, for example 500/hour"
+
+    # Authentication is optional for isolated test deployments. When enabled,
+    # validate every value needed to verify Keycloak tokens before migrations
+    # and service startup proceed.
+    case "${MEPRAM_AUTH_REQUIRED:-false}" in
+        true|True|TRUE|1|yes|Yes|YES|on|On|ON)
+            : "${MEPRAM_KEYCLOAK_ISSUER:?MEPRAM_KEYCLOAK_ISSUER is required when authentication is enabled}"
+            : "${MEPRAM_KEYCLOAK_JWKS_URL:?MEPRAM_KEYCLOAK_JWKS_URL is required when authentication is enabled}"
+            : "${MEPRAM_KEYCLOAK_AUDIENCE:?MEPRAM_KEYCLOAK_AUDIENCE is required when authentication is enabled}"
+            : "${MEPRAM_KEYCLOAK_CLIENT_ID:?MEPRAM_KEYCLOAK_CLIENT_ID is required when authentication is enabled}"
+            [[ "$MEPRAM_KEYCLOAK_ISSUER" =~ ^https?:// ]] \
+                || die "MEPRAM_KEYCLOAK_ISSUER must be an HTTP(S) URL"
+            [[ "$MEPRAM_KEYCLOAK_JWKS_URL" =~ ^https?:// ]] \
+                || die "MEPRAM_KEYCLOAK_JWKS_URL must be an HTTP(S) URL"
+            ;;
+        false|False|FALSE|0|no|No|NO|off|Off|OFF) ;;
+        *) die "MEPRAM_AUTH_REQUIRED must be a boolean value" ;;
+    esac
+
+    : "${MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS:=300}"
+    : "${MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS:=5}"
+    [[ "$MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+        || die "MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS must be a positive integer"
+    [[ "$MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+        || die "MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS must be a positive integer"
+}
+
+before_django_migrate() {
+    # Arguments: action and space-separated MIGRATION_MODULES. This is for
+    # application migration preparation, not the user-selected runscript hooks.
+    # Example: [[ "$1" == install && -n "$2" ]] && python manage.py makemigrations $2
+    :
+}
+
+after_django_migrate() {
+    # Create the initial administrator only for an explicitly enabled fresh
+    # runtime bootstrap. Retries leave an existing account unchanged.
+    [[ "$WORKFLOW" == "bootstrap" && "$ACTION" == "install" ]] || return 0
+    [[ "${CREATE_INITIAL_SUPERUSER:-false}" == "true" ]] || return 0
+    : "${DJANGO_SUPERUSER_USERNAME:?DJANGO_SUPERUSER_USERNAME is required}"
+    : "${DJANGO_SUPERUSER_PASSWORD:?DJANGO_SUPERUSER_PASSWORD is required}"
+
+    DJANGO_SUPERUSER_USERNAME="$DJANGO_SUPERUSER_USERNAME" \
+    DJANGO_SUPERUSER_EMAIL="${DJANGO_SUPERUSER_EMAIL:-}" \
+    DJANGO_SUPERUSER_PASSWORD="$DJANGO_SUPERUSER_PASSWORD" \
+        python manage.py shell <<'PY'
+import os
+
+from django.contrib.auth import get_user_model
+
+user_model = get_user_model()
+username = os.environ["DJANGO_SUPERUSER_USERNAME"]
+email = os.environ.get("DJANGO_SUPERUSER_EMAIL", "")
+password = os.environ["DJANGO_SUPERUSER_PASSWORD"]
+lookup = {user_model.USERNAME_FIELD: username}
+user, created = user_model._default_manager.get_or_create(**lookup)
+if created:
+    if hasattr(user, "email"):
+        user.email = email
+    user.is_staff = True
+    user.is_superuser = True
+    user.set_password(password)
+    user.save()
+    print(f"Created initial superuser: {username}")
+else:
+    print(f"Initial superuser already exists: {username}")
+PY
+}
+
+set_application_permissions() {
+    # Argument: final INSTALL_PATH. Direct/bare-metal installs can customize
+    # owner/group here; container orchestration owns container mount permissions.
+    # Example: chown -R "${APP_UID}:${APP_GID}" "$1/logs" "$1/documents"
+    :
+}
+
+restart_application_server() {
+    # Called only for a direct standard workflow unless restart was skipped.
+    # Example: systemctl reload apache2  (or httpd on RHEL-family systems).
+    :
+}
+
+# ========================= END APPLICATION CUSTOMIZATION =====================
+
+stage_dependencies() {
+    checkout_git_revision
+    check_python
+    check_required_modules
+    install_application_system_packages
+    mkdir -p "$INSTALL_PATH"
+    [[ -d "$INSTALL_PATH/virtualenv" ]] \
+        || "$PYTHON_BIN_PATH" -m venv "$INSTALL_PATH/virtualenv"
+    # shellcheck disable=SC1091
+    source "$INSTALL_PATH/virtualenv/bin/activate"
+    python -m pip install --upgrade pip wheel
+    [[ -f conf/requirements.txt ]] || die "Missing conf/requirements.txt"
     python -m pip install -r conf/requirements.txt
-    cd -
-}
-
-ensure_virtualenv_ready() {
-    if [ "$docker" = true ] && [ "$INSTALL_PATH" = "/app" ]; then
-        return 0
-    fi
-    if [ ! -d "$INSTALL_PATH/virtualenv" ]; then
-        abort_install "Virtualenv not found at $INSTALL_PATH/virtualenv. Run --install dep first."
-    fi
-}
-
-activate_python_environment() {
-    if [ -d "$INSTALL_PATH/virtualenv" ]; then
-        echo "activate the virtualenv"
-        source "$INSTALL_PATH/virtualenv/bin/activate"
-    fi
-}
-
-write_runtime_env_file() {
-    local env_file="$INSTALL_PATH/.env"
-    {
-        echo "# Generated by install.sh. Runtime environment overrides these values."
-        env | grep -E '^MEPRAM_' | sort || true
-    } > "$env_file"
-    chmod 644 "$env_file"
 }
 
 stage_application_files() {
-    local mode="$1"
-    log_section "Starting MePRAM API stage ${mode} version: ${APP_VERSION}"
-
-    mkdir -p "$INSTALL_PATH"
-    if [ "$INSTALL_PATH" != "$(pwd -P)" ]; then
-        cp -R conf core "$INSTALL_PATH/"
-        cp README.md LICENSE manage.py "$INSTALL_PATH/"
-        cp -f Dockerfile pyproject.toml "$INSTALL_PATH/" 2>/dev/null || true
+    checkout_git_revision
+    [[ -d "$INSTALL_PATH/virtualenv" ]] \
+        || die "virtualenv not found at $INSTALL_PATH; install dependencies first"
+    # The Django wrapper is deployment-generated and must never be inherited
+    # from an ignored local source tree or a previous staged installation.
+    rm -rf "$INSTALL_PATH/$PROJECT_MODULE"
+    rm -f "$INSTALL_PATH/manage.py"
+    rsync -rl --delete \
+        --exclude .git --exclude .env --exclude /logs --exclude /documents \
+        --exclude /static --exclude /cron --exclude /tmp --exclude /virtualenv \
+        --exclude /manage.py --exclude "/$PROJECT_MODULE" \
+        ./ "$INSTALL_PATH/"
+    mkdir -p "$INSTALL_PATH/logs" "$INSTALL_PATH/documents" \
+        "$INSTALL_PATH/static" "$INSTALL_PATH/cron" "$INSTALL_PATH/tmp"
+    prepare_application_directories "$INSTALL_PATH"
+    "$INSTALL_PATH/virtualenv/bin/python" -m django startproject \
+        "$PROJECT_MODULE" "$INSTALL_PATH"
+    install -m 0644 "$install_script_dir/conf/urls.py" \
+        "$INSTALL_PATH/$PROJECT_MODULE/urls.py"
+    if [[ -f "$install_script_dir/conf/routing.py" ]]; then
+        install -m 0644 "$install_script_dir/conf/routing.py" \
+            "$INSTALL_PATH/$PROJECT_MODULE/routing.py"
     fi
-    write_runtime_env_file
+    stage_application_custom_files "$install_script_dir" "$INSTALL_PATH" "$ACTION"
+    printf '%s\n' "$GIT_REVISION" > "$INSTALL_PATH/.deployed_revision"
+    if [[ "$RENDER_SETTINGS" == "true" ]]; then
+        local template="$install_script_dir/conf/template_settings.py"
+        local output="${SETTINGS_OUTPUT:-$INSTALL_PATH/$PROJECT_MODULE/settings.py}"
+        [[ -f "$template" ]] || die "Django settings template not found: $template"
+        render_django_settings_file "$template" "$output" "$INSTALL_CONF"
+    fi
+    write_application_runtime_env "$INSTALL_PATH"
+    set_application_permissions "$INSTALL_PATH"
 }
 
-run_django_deploy() {
-    local mode="${1:-install}"
+run_hook() {
+    local specification="$1" script_name="${1%%,*}"
+    local -a args=(manage.py runscript "$script_name")
+    [[ -n "$script_name" ]] || die "Empty migration script name"
+    [[ "$specification" != *,* ]] || args+=(--script-args "${specification#*,}")
+    python "${args[@]}"
+}
 
+bootstrap_application() {
+    [[ -f "$INSTALL_PATH/manage.py" ]] || die "manage.py not found; run --stage first"
+    [[ -x "$INSTALL_PATH/virtualenv/bin/python" ]] || die "virtualenv not found; run --stage first"
     cd "$INSTALL_PATH"
-    activate_python_environment
-
-    echo "Running Django system checks"
-    python manage.py check
-
-    if [ "$mode" = "upgrade" ]; then
-        echo "Applying migrations in fake-initial mode"
-        python manage.py migrate --noinput --fake-initial
-        echo "Applying migrations"
-        python manage.py migrate --noinput
-    else
-        echo "Applying migrations"
-        python manage.py migrate --noinput
+    # shellcheck disable=SC1091
+    source virtualenv/bin/activate
+    check_database
+    validate_application_runtime
+    python manage.py check --deploy
+    local hook
+    for hook in "${SCRIPT_BEFORE[@]}"; do run_hook "$hook"; done
+    before_django_migrate "$ACTION" "$MIGRATION_MODULES"
+    python manage.py migrate --noinput
+    if [[ "$LOAD_TABLES" == "true" && "$SKIP_TABLES" == "false" ]]; then
+        [[ -f conf/first_install_tables.json ]] \
+            || die "Initial table fixture not found: conf/first_install_tables.json"
+        python manage.py loaddata conf/first_install_tables.json
     fi
-
-    python manage.py ensure_default_superuser
-
-    local dashboard_sql_path="${dashboard_sql:-${MEPRAM_DASHBOARD_SQL:-}}"
-    if [ -n "$dashboard_sql_path" ] && [ "$skip_dashboard_sql" = false ]; then
-        ensure_file_exists "$dashboard_sql_path" "$dashboard_sql_path"
-        echo "Importing dashboard SQL: $dashboard_sql_path"
-        python manage.py import_dashboard_sql "$dashboard_sql_path" --truncate
+    for hook in "${SCRIPT_AFTER[@]}"; do run_hook "$hook"; done
+    after_django_migrate "$ACTION"
+    python manage.py collectstatic --noinput
+    local migration_log
+    migration_log="$(mktemp "${TMPDIR:-/tmp}/mepram-omop-api-migrations.XXXXXX.log")"
+    if ! python manage.py showmigrations --plan > "$migration_log" 2>&1 \
+        || grep -Fq '[ ]' "$migration_log"; then
+        cat "$migration_log" >&2
+        rm -f "$migration_log"
+        die "Django migration verification failed"
     fi
-
-    cd -
+    rm -f "$migration_log"
 }
 
-bootstrap_application_runtime() {
-    local mode="$1"
-
-    if [ ! -d "$INSTALL_PATH" ]; then
-        abort_install "Unable to bootstrap application. Folder $INSTALL_PATH does not exist."
-    fi
-
-    if [ ! -f "$INSTALL_PATH/manage.py" ]; then
-        abort_install "manage.py not found at $INSTALL_PATH/manage.py. Stage application files first."
-    fi
-
-    write_runtime_env_file
-    run_django_deploy "$mode"
-}
-
-run_dependency_stage() {
-    local mode="$1"
-
-    if [ "$mode" = "install" ]; then
-        log_section "Preparing dependency environment for installation"
-        mkdir -p "$INSTALL_PATH"
-    else
-        log_section "Preparing dependency environment for upgrade"
-        if [ ! -d "$INSTALL_PATH" ]; then
-            abort_install "Unable to start the upgrade. Folder $INSTALL_PATH does not exist."
-        fi
-    fi
-
-    install_system_packages
-    sync_requirements_file
-    setup_virtualenv "$mode"
-    install_python_requirements
-}
-
-install_application_files() {
-    stage_application_files "install"
-    bootstrap_application_runtime "install"
-    log_section "Successfuly MePRAM API Installation version: ${APP_VERSION}"
-    echo "Installation completed"
-}
-
-upgrade_application_files() {
-    if [ ! -d "$INSTALL_PATH" ]; then
-        abort_install "Unable to start the upgrade. Folder $INSTALL_PATH does not exist."
-    fi
-    stage_application_files "upgrade"
-    bootstrap_application_runtime "upgrade"
-    log_section "Successfuly upgrade of MePRAM API version: ${APP_VERSION}"
-}
-
-check_requirements() {
-    log_section "Checking main requirements"
-    python_check
-    log_info "Valid version of Python"
-    if [[ "$operation_scope" == "full" || "$operation_scope" == "app" ]]; then
-        db_check
-        log_info "Successful check for database"
-    fi
-
-    if [ "$install_type" == "full" ] || [ "$install_type" == "dep" ] || [ "$upgrade_type" == "full" ] || [ "$upgrade_type" == "dep" ]; then
-        log_warn "Checking requirement of root user when installation is full or dep"
-        root_check
-        log_info "Successful checking of root user"
-    fi
-}
-
-check_stage_requirements() {
-    log_section "Checking requirements for staged app preparation"
-    python_check
-    log_info "Valid version of Python"
-}
-
-check_bootstrap_requirements() {
-    log_section "Checking requirements for application bootstrap"
-    python_check
-    log_info "Valid version of Python"
-    db_check
-    log_info "Successful check for database"
-}
-
-ensure_git_safe_directory
-if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    initial_git_ref=$(git rev-parse --abbrev-ref HEAD || git rev-parse HEAD)
-else
-    initial_git_ref=""
-fi
-did_checkout_git_ref=false
+remember_git_ref
 trap restore_git_ref EXIT
 
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+case "$WORKFLOW" in
+    stage) stage_dependencies; stage_application_files ;;
+    bootstrap) bootstrap_application ;;
+    standard)
+        if [[ "$OPERATION_SCOPE" == "full" || "$OPERATION_SCOPE" == "dep" ]]; then
+            stage_dependencies
+        fi
+        if [[ "$OPERATION_SCOPE" == "full" || "$OPERATION_SCOPE" == "app" ]]; then
+            stage_application_files
+            bootstrap_application
+        fi
+        if [[ "$SKIP_APACHE_RESTART" == "false" ]]; then restart_application_server; fi
+        ;;
+    *) die "Invalid workflow: $WORKFLOW" ;;
+esac
 
-reset=true
-for arg in "$@"
-do
-    if [ -n "${reset:-}" ]; then
-      unset reset
-      set --
-    fi
-    case "$arg" in
-        --install)             set -- "$@" -i ;;
-        --upgrade)             set -- "$@" -u ;;
-        --stage)               set -- "$@" -j ;;
-        --bootstrap)           set -- "$@" -l ;;
-        --dashboard_sql)       set -- "$@" -d ;;
-        --skip_dashboard_sql)  set -- "$@" -b ;;
-        --git_revision)        set -- "$@" -g ;;
-        --conf)                set -- "$@" -c ;;
-        --docker)              set -- "$@" -k ;;
-        --skip_apache_restart) set -- "$@" -a ;;
-        --help)                set -- "$@" -h ;;
-        --version)             set -- "$@" -v ;;
-        *)                     set -- "$@" "$arg" ;;
-    esac
-done
-
-git_branch=$initial_git_ref
-conf="./install_settings.txt"
-install=true
-install_type="full"
-upgrade=false
-upgrade_type="full"
-workflow="standard"
-workflow_mode=""
-docker=false
-dashboard_sql=""
-skip_dashboard_sql=false
-
-options=":c:i:u:j:l:g:d:bkvha"
-while getopts $options opt; do
-    case $opt in
-        i)
-            workflow="standard"
-            install=true
-            upgrade=false
-            if [[ "$OPTARG" == "full" || "$OPTARG" == "dep" || "$OPTARG" == "app" ]]; then
-                install_type=$OPTARG
-                upgrade_type=$OPTARG
-            else
-                echo "Install is not set to one valid option. Use: --install full/app/dep"
-                exit 1
-            fi
-            ;;
-        u)
-            workflow="standard"
-            install=false
-            upgrade=true
-            if [[ "$OPTARG" == "full" || "$OPTARG" == "dep" || "$OPTARG" == "app" ]]; then
-                upgrade_type=$OPTARG
-                install_type=$OPTARG
-            else
-                echo "Upgrade is not set to one valid option. Use: --upgrade full/app/dep"
-                exit 1
-            fi
-            ;;
-        j)
-            workflow="stage"
-            workflow_mode=$OPTARG
-            if [[ "$workflow_mode" != "install" && "$workflow_mode" != "upgrade" ]]; then
-                echo "Stage is not set to one valid option. Use: --stage install/upgrade"
-                exit 1
-            fi
-            ;;
-        l)
-            workflow="bootstrap"
-            workflow_mode=$OPTARG
-            if [[ "$workflow_mode" != "install" && "$workflow_mode" != "upgrade" ]]; then
-                echo "Bootstrap is not set to one valid option. Use: --bootstrap install/upgrade"
-                exit 1
-            fi
-            ;;
-        d) dashboard_sql=$OPTARG ;;
-        b) skip_dashboard_sql=true ;;
-        g) git_branch=$OPTARG ;;
-        c) conf=$OPTARG ;;
-        k) docker=true ;;
-        a) ;;
-        h)
-            usage
-            exit 1
-            ;;
-        v)
-            echo $APP_VERSION
-            exit 1
-            ;;
-        \?)
-            echo "Invalid Option: -$OPTARG" 1>&2
-            usage
-            exit 1
-            ;;
-        :)
-            echo "Option -$OPTARG requires an argument." >&2
-            exit 1
-            ;;
-        *)
-            echo "Unimplemented option: -$OPTARG" >&2
-            exit 1
-            ;;
-    esac
-done
-shift $((OPTIND-1))
-
-operation="install"
-operation_scope="$install_type"
-if [ $upgrade == true ]; then
-    operation="upgrade"
-    operation_scope="$upgrade_type"
-fi
-if [ "$workflow" != "standard" ]; then
-    operation="$workflow_mode"
-    operation_scope="app"
-fi
-
-load_install_config
-checkout_git_revision
-
-if [ "$workflow" = "stage" ]; then
-    check_stage_requirements
-    stage_application_files "$workflow_mode"
-    exit 0
-fi
-
-if [ "$workflow" = "bootstrap" ]; then
-    check_bootstrap_requirements
-    bootstrap_application_runtime "$workflow_mode"
-    exit 0
-fi
-
-check_requirements
-
-if [[ "$operation_scope" == "full" || "$operation_scope" == "dep" ]]; then
-    run_dependency_stage "$operation"
-    if [ "$operation_scope" = "dep" ]; then
-        log_info "Dependency stage completed."
-        exit 0
-    fi
-fi
-
-if [[ "$operation_scope" == "full" || "$operation_scope" == "app" ]]; then
-    if [ "$operation" = "install" ]; then
-        install_application_files
-    else
-        upgrade_application_files
-    fi
-    exit 0
-fi
-
-printf "\n\n%s"
-printf "${RED}------------------${NC}\n"
-printf "%s"
-printf "${RED}Invalid installation parameters${NC}\n"
-printf "%s"
-printf "${RED}------------------${NC}\n\n"
-echo "See the usage examples"
-usage
-exit 1
+info "$WORKFLOW $ACTION completed for MePRAM OMOP API at $INSTALL_PATH"

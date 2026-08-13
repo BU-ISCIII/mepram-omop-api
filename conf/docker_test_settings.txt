@@ -1,12 +1,87 @@
-MEPRAM_DB_NAME=mepram_omop_api
-MEPRAM_DB_USER=mepram
-MEPRAM_DB_PASSWORD=mepram_password
-MEPRAM_DB_ROOT_PASSWORD=root
-MEPRAM_DB_PORT_HOST=6608
-MEPRAM_API_PORT=8000
-MEPRAM_API_DEBUG=true
-MEPRAM_API_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
-MEPRAM_DASHBOARD_SCHEMA=mepram_omop_api
-MEPRAM_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
-MEPRAM_CSRF_TRUSTED_ORIGINS=
-PUBLIC_API_THROTTLE_RATE=500/hour
+# Safe local/test values. Never use these credentials in production.
+
+### Application layout and Django project
+REPO_PATH='/srv/mepram-omop-api'
+INSTALL_PATH='/opt/mepram-omop-api'
+PROJECT_MODULE='conf'
+PYTHON_BIN_PATH='python3.12'
+
+### Application-specific installation modules
+# Optional lists used only when install.sh implements these operations.
+REQUIRED_MODULES=''
+MIGRATION_MODULES=''
+
+### Container runtime identity
+APP_UID='1212'
+APP_GID='1212'
+APP_SHELL='/bin/bash'
+APP_PORT='8001'
+
+### Disposable persistence paths
+HOST_LOG_PATH='/tmp/mepram-omop-api/logs'
+# Test images render settings during build and do not mount this host path.
+DJANGO_SETTINGS_PATH='/tmp/mepram-omop-api/data/settings/conf/settings.py'
+
+### Compose test database
+DB_HOST='conf_app_db'
+DB_PORT='3306'
+DB_NAME='conf'
+DB_USER='django'
+DB_PASSWORD='djangopass'
+DB_ROOT_PASSWORD='root'
+
+### Django and local email defaults
+DJANGO_DEBUG='true'
+DJANGO_SECRET_KEY='test-only-change-me'
+DJANGO_ALLOWED_HOSTS='*'
+DJANGO_CSRF_TRUSTED_ORIGINS='http://localhost:8001,http://127.0.0.1:8001'
+DB_CONN_MAX_AGE='60'
+
+### MePRAM API behavior
+# The demo importer and API health endpoint use this schema. Keeping it equal
+# to DB_NAME makes the disposable test database self-contained.
+MEPRAM_DASHBOARD_SCHEMA='conf'
+# Browser origins permitted to call the API during local frontend development.
+API_CORS_ALLOWED_ORIGINS='http://127.0.0.1:3000,http://localhost:3000'
+# Authentication is disabled by default in the disposable test deployment so
+# smoke tests and frontend development do not require a live Keycloak server.
+OIDC_AUTH_REQUIRED='false'
+# Keep interactive API documentation restricted when authentication is later
+# enabled for an integration test.
+API_DOCS_REQUIRE_STAFF='true'
+OIDC_ISSUER='http://127.0.0.1:8081/realms/mepram'
+OIDC_JWKS_URL='http://127.0.0.1:8081/realms/mepram/protocol/openid-connect/certs'
+OIDC_AUDIENCE='mepram-api'
+OIDC_CLIENT_ID='pathocore-web'
+OIDC_JWKS_CACHE_TTL_SECONDS='300'
+OIDC_JWKS_TIMEOUT_SECONDS='5'
+# DRF format: number of requests per second, minute, hour, or day.
+API_THROTTLE_RATE='500/hour'
+
+### Local email defaults
+EMAIL_HOST='host.docker.internal'
+EMAIL_PORT='25'
+EMAIL_HOST_USER='bioinformatica@isciii.es'
+EMAIL_HOST_PASSWORD=''
+EMAIL_USE_TLS='False'
+
+### Initial administrator (bootstrap install only)
+CREATE_INITIAL_SUPERUSER='false'
+DJANGO_SUPERUSER_USERNAME='admin'
+DJANGO_SUPERUSER_EMAIL=''
+DJANGO_SUPERUSER_PASSWORD=''
+
+### Gunicorn and startup tuning
+WEB_CONCURRENCY='2'
+GUNICORN_THREADS='2'
+GUNICORN_TIMEOUT='300'
+GUNICORN_KEEPALIVE='5'
+APP_START_WAIT_TIMEOUT_SECONDS='100'
+
+### Application log policy compatibility
+# Set LOG_PATH when LOG_TYPE='symbolic_link'.
+LOG_TYPE='regular_folder'
+LOG_PATH=''
+
+### Selected infrastructure add-ons
+# Infrastructure add-ons use files below conf/<addon>/.

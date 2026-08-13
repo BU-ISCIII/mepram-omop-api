@@ -5,3 +5,15 @@ __pycache__/
 .env.*
 db_data/
 staticfiles/
+# Deployment settings are supplied through build secrets. Only committed test
+# and template settings belong in the image build context.
+install_settings.txt
+conf/*settings*.txt
+!conf/docker_test_settings.txt
+!conf/template_settings.py
+.tmp_docker_install_conf_*.txt
+.env.*.file
+deployment/apache/*.conf
+deployment/settings/
+logs/
+documents/

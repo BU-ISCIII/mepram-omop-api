@@ -1,362 +1,489 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MEPRAM_VERSION="1.0.0"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$script_dir/deployment/lib/container/common.sh"
+# shellcheck disable=SC1091
+source "$script_dir/deployment/lib/container/django.sh"
+
+APP_VERSION="0.1.0"
+APPLICATION_NAME="MePRAM OMOP API"
+
+# ============================================================================
+# GENERATED SERVICE/ADD-ON CUSTOMIZATION
+# Regenerate these callbacks from the descriptor; keep application-neutral
+# lifecycle mechanics below unchanged.
+# ============================================================================
+install_services=(app)
+addon_build_services=()
+permission_services=(app apache keycloak_db keycloak)
+configured_services=(app apache keycloak)
+
+default_service_install_conf() {
+    case "$1" in
+        app) [ "$mode" = test ] && echo conf/docker_test_settings.txt || echo conf/docker_production_settings.txt ;;
+        apache) [ "$mode" = test ] && echo conf/apache/apache_test_settings.txt || echo conf/apache/apache_production_settings.txt ;;
+        keycloak) [ "$mode" = test ] && echo conf/keycloak/keycloak_test_settings.txt || echo conf/keycloak/keycloak_production_settings.txt ;;
+        *) return 1 ;;
+    esac
+}
+service_build_context_dir() {
+    case "$1" in
+        app) echo . ;;
+        *) return 1 ;;
+    esac
+}
+service_environment_prefix() {
+    local prefix
+    array_contains "$1" "${install_services[@]}" || return 1
+    prefix="${1^^}"
+    printf '%s\n' "${prefix//-/_}"
+}
+service_environment_value() {
+    local prefix variable
+    prefix="$(service_environment_prefix "$1")" || return 1
+    variable="${prefix}_$2"
+    if [ -n "${!variable:-}" ]; then
+        printf '%s\n' "${!variable}"
+    elif [ "$#" -ge 3 ]; then
+        printf '%s\n' "$3"
+    else
+        die "$variable is required in the rendered service settings"
+    fi
+}
+service_repo_path() {
+    service_environment_value "$1" REPO_PATH
+}
+service_install_path() {
+    service_environment_value "$1" INSTALL_PATH
+}
+service_readiness_path() {
+    case "$1" in
+        app) echo "$(service_install_path "$1")/manage.py" ;;
+        *) return 1 ;;
+    esac
+}
+service_image_name() {
+    case "$1" in
+        app) echo mepram-omop-api:local ;;
+        *) return 1 ;;
+    esac
+}
+service_profile() {
+    case "$1" in
+        app) echo django ;;
+        *) return 1 ;;
+    esac
+}
+service_dockerfile() {
+    case "$1" in
+        app) echo Dockerfile ;;
+        *) return 1 ;;
+    esac
+}
+service_container_install_conf() {
+    case "$1" in
+        app) echo conf/.runtime_install_settings.txt ;;
+        *) return 1 ;;
+    esac
+}
+service_uid() {
+    service_environment_value "$1" APP_UID
+}
+service_gid() {
+    service_environment_value "$1" APP_GID
+}
+
+prepare_compose_environment() {
+    local -a settings_sources=(
+        "APP|${install_conf_host_by_service[app]}"
+        "|${install_conf_host_by_service[apache]}"
+        "|${install_conf_host_by_service[keycloak]}"
+    )
+    local -a deployment_values=(
+        "GIT_REVISION|$git_revision"
+        "APP_IMAGE|mepram-omop-api:local"
+    )
+    compose_env_file="$script_dir/.env.${mode}.file"
+    write_compose_environment_file "$compose_env_file" settings_sources deployment_values
+}
+
+# Every project uses the generated interpolation file in both modes because it
+# combines service-specific settings sources with collision-safe prefixes.
+deployment_compose() {
+    compose_exec --env-file "$compose_env_file" "$@"
+}
+current_service_container() {
+    resolve_service_container "$1"
+}
+
+# Each Django service renders its own protected host settings bind. React
+# services and add-ons have no Django settings source.
+prepare_application_host_sources() {
+    local settings_output
+    if [ "$mode" = production ]; then
+        settings_output="$(service_environment_value app DJANGO_SETTINGS_PATH)"
+        [ -n "$settings_output" ] || { echo "DJANGO_SETTINGS_PATH is required for app" >&2; return 1; }
+        mkdir -p "$(dirname "$settings_output")"
+        prepare_django_settings_bind_mount ./conf/template_settings.py "$settings_output" "${install_conf_host_by_service[app]}"
+    fi
+    # Render the application-owned Apache sources only after the protected
+    # settings environment has been loaded.
+    local apache_source_dir="$script_dir/conf/apache"
+    local apache_output_dir="$script_dir/deployment/apache"
+    local apache_conf_name apache_config_service apache_log_path
+    apache_config_service=app
+    [ -d "$apache_source_dir" ] || {
+        echo "Apache source configuration directory not found: $apache_source_dir" >&2
+        return 1
+    }
+    mkdir -p "$apache_output_dir"
+    export APACHE_SERVER_NAME="${APACHE_SERVER_NAME:?APACHE_SERVER_NAME is required}"
+    export APACHE_UPSTREAM_SERVICE="${APACHE_UPSTREAM_SERVICE:-$apache_config_service}"
+    export APACHE_UPSTREAM_PORT="${APACHE_UPSTREAM_PORT:-$(service_environment_value "$apache_config_service" APP_PORT)}"
+    export INSTALL_PATH="$(service_install_path "$apache_config_service")"
+    export APACHE_PROXY_TIMEOUT="${APACHE_PROXY_TIMEOUT:-$(service_environment_value "$apache_config_service" GUNICORN_TIMEOUT 120)}"
+    export APACHE_LOG_STEM="${APACHE_LOG_STEM:-$(normalize_apache_server_name "$APACHE_SERVER_NAME")}"
+    for apache_conf_name in 00-logs.conf 01-reverse-proxy.conf 02-server-status.conf; do
+        [ -f "$apache_source_dir/$apache_conf_name" ] || {
+            echo "Apache source configuration not found: $apache_source_dir/$apache_conf_name" >&2
+            return 1
+        }
+        render_environment_config_template \
+            "$apache_source_dir/$apache_conf_name" \
+            "$apache_output_dir/$apache_conf_name" 0644 || return 1
+    done
+    if [ "$mode" = production ]; then
+        apache_log_path="${APACHE_LOG_PATH:?APACHE_LOG_PATH is required}"
+        mkdir -p "$apache_log_path"
+    fi
+
+    # Keycloak imports realm JSON only when initializing an absent realm.
+    local keycloak_import_path
+    keycloak_import_path="${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required}"
+    mkdir -p "$keycloak_import_path"
+    compgen -G "$keycloak_import_path/*.json" >/dev/null || {
+        echo "Keycloak realm import JSON not found in $keycloak_import_path" >&2
+        return 1
+    }
+}
+
+# Keep one independently reviewable host permission specification per
+# application and per selected add-on. Empty add-on specs are intentional until
+# that add-on declares writable bind sources.
+prepare_host_bind_source_permissions() {
+    [ "$mode" = production ] || return 0
+    local log_path settings_path uid gid
+    log_path="$(service_environment_value app HOST_LOG_PATH)"
+    settings_path="$(service_environment_value app DJANGO_SETTINGS_PATH)"
+    [ -n "$log_path" ] || { echo "HOST_LOG_PATH is required for app" >&2; return 1; }
+    [ -n "$settings_path" ] || { echo "DJANGO_SETTINGS_PATH is required for app" >&2; return 1; }
+    uid="$(service_uid app)"; gid="$(service_gid app)"
+    local -a app_host_bind_permission_spec=(
+        "$log_path|$uid:$gid|0775"
+        "$(dirname "$settings_path")|-|0755"
+        "$settings_path|$uid:$gid|0664"
+    )
+    apply_host_permission_spec "${app_host_bind_permission_spec[@]}"
+    apache_log_path="${APACHE_LOG_PATH:?APACHE_LOG_PATH is required}"
+    local -a apache_host_bind_permission_spec=(
+        "$script_dir/deployment/apache|-|0755"
+        "$script_dir/deployment/apache/00-logs.conf|-|0644"
+        "$script_dir/deployment/apache/01-reverse-proxy.conf|-|0644"
+        "$script_dir/deployment/apache/02-server-status.conf|-|0644"
+        "$apache_log_path|1001:0|0775"
+    )
+    apply_host_permission_spec "${apache_host_bind_permission_spec[@]}"
+    local keycloak_import_path
+    keycloak_import_path="${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required}"
+    local -a keycloak_host_bind_permission_spec=("$keycloak_import_path|-|0755")
+    for realm_file in "$keycloak_import_path"/*.json; do
+        keycloak_host_bind_permission_spec+=("$realm_file|-|0640")
+    done
+    apply_host_permission_spec "${keycloak_host_bind_permission_spec[@]}"
+}
+
+# Keep a separate running-mount specification in every service/add-on case.
+prepare_running_container_mount_permissions() {
+    local service_name="$1" container_id="$2"
+    local install_path uid gid
+    case "$service_name" in
+        app)
+            install_path="$(service_install_path "$service_name")"
+            uid="$(service_uid "$service_name")"; gid="$(service_gid "$service_name")"
+            local -a app_running_mount_permission_spec=(
+                "$install_path/logs|$uid:$gid|u+rwX,g+rwX"
+                "$install_path/documents|$uid:$gid|u+rwX,g+rwX"
+                "$install_path/static|$uid:$gid|u+rwX,g+rwX,o+rX"
+            )
+            apply_container_directory_permission_spec "$container_id" "${app_running_mount_permission_spec[@]}"
+            prepare_django_container_settings_permissions "$container_id" "$install_path/conf/settings.py" "$uid" "$gid"
+            ;;
+        apache)
+            local -a apache_running_mount_permission_spec=()
+            apply_container_directory_permission_spec "$container_id" "${apache_running_mount_permission_spec[@]}"
+            ;;
+        keycloak)
+            local -a keycloak_running_mount_permission_spec=()
+            apply_container_directory_permission_spec "$container_id" "${keycloak_running_mount_permission_spec[@]}"
+            ;;
+        keycloak_db)
+            local -a keycloak_db_running_mount_permission_spec=(
+                "/var/lib/mysql|999:999|u+rwX,g+rwX,o-rwx"
+            )
+            apply_container_directory_permission_spec "$container_id" "${keycloak_db_running_mount_permission_spec[@]}"
+            ;;
+        *) return 0 ;;
+    esac
+}
+
+bootstrap_service() {
+    local service_name="$1" container_id="$2" deployment_action="$3"
+    local repo_path runtime_conf uid gid status
+    local -a args
+    case "$service_name" in
+        app)
+            repo_path="$(service_repo_path "$service_name")"
+            # Fixed temporary in-container path; this is not operator configuration.
+            runtime_conf=conf/.runtime_install_settings.txt
+            [[ "$runtime_conf" == /* ]] || runtime_conf="$repo_path/$runtime_conf"
+            uid="$(service_uid "$service_name")"; gid="$(service_gid "$service_name")"
+            stage_container_runtime_config "$container_id" "${install_conf_host_by_service[$service_name]}" "$runtime_conf" "$uid" "$gid"
+            args=(--bootstrap "$deployment_action" --git_revision "$git_revision" --conf "$runtime_conf" --skip_apache_restart)
+            for hook in "${migration_script_before[@]}"; do args+=(--script_before "$hook"); done
+            for hook in "${migration_script_after[@]}"; do args+=(--script_after "$hook"); done
+            status=0; engine_exec exec "$container_id" bash "$repo_path/install.sh" "${args[@]}" || status=$?
+            [ "$mode" = test ] || remove_container_runtime_config "$container_id" "$runtime_conf" || true
+            return "$status"
+            ;;
+        *) return 0 ;;
+    esac
+}
+
+# Applications with disposable fixtures or demo files customize this callback
+# in their generated wrapper and set application_supports_test_data=true. Keep
+# application-specific fixture names, users/groups, downloads, and data-service
+# layout here so the complete test installation remains readable in one file.
+application_supports_test_data=true
+load_test_deployment_data() {
+    local app_container app_install_path container_sql status
+
+    if [ "$skip_test_data" = true ] || [ "$skip_demo_data" = true ]; then
+        echo "Skipping MePRAM dashboard demo data as requested"
+        return 0
+    fi
+    if [ -z "$demo_data" ]; then
+        echo "No MePRAM dashboard demo data was provided; skipping import"
+        return 0
+    fi
+    [ -f "$demo_data" ] || die "Dashboard demo-data SQL file not found: $demo_data"
+
+    app_container="$(current_service_container app)" \
+        || die "Unable to resolve the app container for demo-data loading"
+    app_install_path="$(service_install_path app)"
+    container_sql="/tmp/mepram-dashboard-demo.sql"
+
+    echo "Loading MePRAM dashboard demo data from $demo_data"
+    engine_exec cp "$demo_data" "$app_container:$container_sql"
+    status=0
+    engine_exec exec -w "$app_install_path" "$app_container" \
+        "$app_install_path/virtualenv/bin/python" manage.py \
+        import_dashboard_sql "$container_sql" --truncate || status=$?
+    engine_exec exec "$app_container" rm -f "$container_sql" || true
+    [ "$status" -eq 0 ] || die "MePRAM dashboard demo-data import failed"
+}
+
+action="install"; mode="production"; engine="docker"; git_revision="current"
+install_conf=""; compose_file=""; compose_env_file=""
+install_conf_map_entries=(); migration_script_before=(); migration_script_after=()
+demo_data=""; skip_demo_data=""; skip_test_data=""
 
 usage() {
-cat << EOF
-This script installs and upgrades the MePRAM API in containers.
+    cat <<'EOF'
+Install, upgrade, or repair the application deployment.
 
-Usage : $0 [--dashboard_sql] [--git_revision] [--compose_file] [--install_conf] [--install_conf_map] [--action] [--engine] [--test]
-    Optional input data:
-    --dashboard_sql      | Path to dashboard.sql to import after migrations
-    --git_revision       | Specify the Git revision to install (default: develop, or 'current' to use copied local sources)
-    --compose_file       | Compose file to use (overrides default)
-    --install_conf       | Settings file consumed during container image build/runtime
-    --install_conf_map   | Service-specific settings file: service,path (can be repeated). Valid service: mepram_api
-    --action             | install (default) or upgrade, to control bootstrap mode
-    --skip_dashboard_sql | Skip dashboard SQL import even if --dashboard_sql is provided
-    --engine             | Container engine to use: docker (default) or podman
-    --test               | Use development/test compose file and test settings
-
-Examples:
-    Install test stack
-    bash $0 --test
-
-    Install test stack from current local committed sources without checking out a branch in-container
-    bash $0 --test --git_revision current
-
-    Install and import dashboard data
-    bash $0 --test --dashboard_sql /path/to/dashboard.sql
-
-    Upgrade an existing deployment using the same database
-    bash $0 --install_conf conf/docker_test_settings.txt --action upgrade
-
+Options:
+  --action install|upgrade|fix-permissions
+  --test
+  --engine docker|podman
+  --git_revision <branch|tag|commit|current>
+  --install_conf <path>              First application service only.
+  --install_conf_map <component,path>  Repeat for application and add-on overrides.
+  --compose_file <path>
+  --script_before <name[,args]>
+  --script_after <name[,args]>
+  --script <name[,args]>
+  --demo_data <path>
+  --skip_demo_data
+  --skip_test_data
+  --help
+  --version
 EOF
 }
+die() { echo "ERROR: $*" >&2; exit 1; }
 
-reset=true
-
-for arg in "$@"
-do
-    if [ -n "${reset:-}" ]; then
-      unset reset
-      set --
-    fi
-    case "$arg" in
-        --dashboard_sql)      set -- "$@" -d ;;
-        --git_revision)       set -- "$@" -g ;;
-        --compose_file)       set -- "$@" -c ;;
-        --install_conf)       set -- "$@" -s ;;
-        --install_conf_map)   set -- "$@" -j ;;
-        --action)             set -- "$@" -a ;;
-        --skip_dashboard_sql) set -- "$@" -n ;;
-        --test)               set -- "$@" -p ;;
-        --engine)             set -- "$@" -e ;;
-        --help)               set -- "$@" -h ;;
-        --version)            set -- "$@" -v ;;
-        *)                    set -- "$@" "$arg" ;;
+# 1. Parse the canonical outer-installer interface.
+while (($#)); do
+    case "$1" in
+        --action) action="${2:-}"; shift 2 ;;
+        --test) mode="test"; shift ;;
+        --engine) engine="${2:-}"; shift 2 ;;
+        --git_revision) git_revision="${2:-}"; shift 2 ;;
+        --install_conf) install_conf="${2:-}"; shift 2 ;;
+        --install_conf_map) install_conf_map_entries+=("${2:-}"); shift 2 ;;
+        --compose_file) compose_file="${2:-}"; shift 2 ;;
+        --script_before) migration_script_before+=("${2:-}"); shift 2 ;;
+        --script_after|--script) migration_script_after+=("${2:-}"); shift 2 ;;
+        --demo_data) demo_data="${2:-}"; shift 2 ;;
+        --skip_demo_data) skip_demo_data=true; shift ;;
+        --skip_test_data) skip_test_data=true; shift ;;
+        --help) usage; exit 0 ;;
+        --version) echo "$APP_VERSION"; exit 0 ;;
+        *) die "Unknown option: $1" ;;
     esac
 done
 
-dashboard_sql=""
-git_revision="develop"
-compose_file=""
-install_conf=""
-install_conf_container=""
-install_conf_map_entries=()
-skip_dashboard_sql=false
-mode="production"
-action="install"
-engine="docker"
+# 2. Validate arguments before modifying deployment state.
+[[ "$action" =~ ^(install|upgrade|fix-permissions)$ ]] || die "Invalid action: $action"
+[[ "$engine" =~ ^(docker|podman)$ ]] || die "Invalid engine: $engine"
+if [ -n "$demo_data" ] && [ "$application_supports_test_data" != true ]; then
+    die "--demo_data is not implemented for $APPLICATION_NAME"
+fi
+if [ -n "$demo_data" ]; then
+    [ -f "$demo_data" ] || die "Dashboard demo-data SQL file not found: $demo_data"
+    demo_data="$(cd "$(dirname "$demo_data")" && pwd)/$(basename "$demo_data")"
+fi
+if [ "$mode" = test ] && [ "$action" = install ] \
+    && [ "$application_supports_test_data" = true ]; then
+    skip_demo_data="${skip_demo_data:-false}"
+    skip_test_data="${skip_test_data:-false}"
+else
+    skip_demo_data=true
+    skip_test_data=true
+fi
 
-ENGINE_CMD=()
-COMPOSE_CMD=()
-
-set_engine() {
-    if [ "$engine" = "docker" ]; then
-        if ! command -v docker >/dev/null 2>&1; then
-            echo "docker not found. Install docker or use --engine podman."
-            exit 1
-        fi
-        ENGINE_CMD=("docker")
-        COMPOSE_CMD=("docker" "compose")
-    else
-        if ! command -v podman >/dev/null 2>&1; then
-            echo "podman not found. Install podman or use --engine docker."
-            exit 1
-        fi
-        ENGINE_CMD=("podman")
-        if command -v podman-compose >/dev/null 2>&1; then
-            COMPOSE_CMD=("podman-compose")
-        elif podman compose version >/dev/null 2>&1; then
-            COMPOSE_CMD=("podman" "compose")
-        else
-            echo "podman compose not available. Install podman-compose or use --engine docker."
-            exit 1
-        fi
+# 3. Resolve one protected configuration source per configured component.
+cd "$script_dir"
+declare -A install_conf_host_by_service=()
+for service_name in "${configured_services[@]}"; do
+    install_conf_host_by_service["$service_name"]="$(default_service_install_conf "$service_name")"
+done
+if [ -n "$install_conf" ]; then install_conf_host_by_service["${install_services[0]}"]="$install_conf"; fi
+for mapping in "${install_conf_map_entries[@]}"; do
+    [[ "$mapping" == *,* ]] || die "Invalid --install_conf_map: $mapping"
+    service_name="${mapping%%,*}"; path="${mapping#*,}"
+    array_contains "$service_name" "${configured_services[@]}" || die "Unknown mapped component: $service_name"
+    install_conf_host_by_service["$service_name"]="$path"
+done
+for service_name in "${configured_services[@]}"; do
+    path="${install_conf_host_by_service[$service_name]}"
+    [[ "$path" = /* ]] || path="$script_dir/$path"
+    [ -f "$path" ] || die "Configuration for $service_name not found: $path"
+    if [ "$mode" = production ] \
+        && grep -Eq '^[A-Z0-9_]+=.*CHANGE_ME' "$path"; then
+        die "Production configuration for $service_name contains CHANGE_ME: $path"
     fi
-}
+    install_conf_host_by_service["$service_name"]="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
+done
 
-engine_exec() {
-    "${ENGINE_CMD[@]}" "$@"
-}
+# 4. Select the engine, prepare host sources and validate the final Compose model.
+set_engine "$engine"
+compose_file="${compose_file:-docker-compose.$([ "$mode" = test ] && echo test || echo prod).yml}"
+require_compose_file "$compose_file"
+prepare_compose_environment
+load_compose_environment_file "$compose_env_file"
+prepare_application_host_sources
+prepare_host_bind_source_permissions
+deployment_compose -f "$compose_file" config \
+    || die "Compose configuration validation failed: $compose_file"
 
-compose_exec() {
-    "${COMPOSE_CMD[@]}" "$@"
-}
+# 5. Dispatch permission-only repair without building or bootstrapping.
+if [ "$action" = fix-permissions ]; then
+    for service_name in "${permission_services[@]}"; do
+        container_id="$(current_service_container "$service_name" 2>/dev/null || true)"
+        [ -z "$container_id" ] || prepare_running_container_mount_permissions "$service_name" "$container_id"
+    done
+    echo "Permissions repaired without build or bootstrap."
+    exit 0
+fi
 
-read_install_conf_value() {
-    local key="$1"
-    local file="$2"
+# 6. Build application services in declared order. Production builds use the
+# engine directly: Django receives its settings as
+# an ephemeral build secret, while React receives only its public VITE value.
+# This avoids requiring Compose implementations to support build.secrets.
+for service_name in "${install_services[@]}"; do
+    if [ "$mode" = test ]; then
+        deployment_compose -f "$compose_file" build --no-cache "$service_name"
+        continue
+    fi
+    context="$(service_build_context_dir "$service_name")"
+    dockerfile="$(service_dockerfile "$service_name")"
+    profile="$(service_profile "$service_name")"
+    if [ "$profile" = django ]; then
+        engine_build --no-cache --file "$context/$dockerfile" \
+            --secret "id=install_conf,src=${install_conf_host_by_service[$service_name]}" \
+            --build-arg GIT_REVISION="$git_revision" \
+            --build-arg INSTALL_CONF="$(service_container_install_conf "$service_name")" \
+            --build-arg USE_INSTALL_CONF_SECRET=true \
+            --build-arg RENDER_DJANGO_SETTINGS=false \
+            --build-arg APP_REPO_PATH="$(service_repo_path "$service_name")" \
+            --build-arg APP_INSTALL_PATH="$(service_install_path "$service_name")" \
+            --build-arg APP_PORT="$(service_environment_value "$service_name" APP_PORT)" \
+            --build-arg APP_UID="$(service_uid "$service_name")" \
+            --build-arg APP_GID="$(service_gid "$service_name")" \
+            --tag "$(service_image_name "$service_name")" "$context"
+    else
+        vite_api_url="$(service_environment_value "$service_name" VITE_API_BASE_URL)"
+        engine_build --no-cache --file "$context/$dockerfile" \
+            --build-arg GIT_REVISION="$git_revision" \
+            --build-arg VITE_API_BASE_URL="$vite_api_url" \
+            --tag "$(service_image_name "$service_name")" "$context"
+    fi
+done
+# Build add-on images through Compose so their declared build arguments and
+# add-on-owned Dockerfiles remain the single source of truth.
+for service_name in "${addon_build_services[@]}"; do
+    deployment_compose -f "$compose_file" build --no-cache "$service_name"
+done
+# 7. Recreate and start the complete topology from one Compose invocation so
+# freshly built images and the current configuration are deployed consistently.
+# Named volumes and bind-mounted persistent data are preserved.
+deployment_compose -f "$compose_file" up -d --force-recreate
 
-    bash -c '
-        set -a
-        . "$1"
-        key="$2"
-        printf "%s" "${!key-}"
-    ' _ "$file" "$key"
-}
-
-service_exists() {
-    compose_exec --env-file "$install_conf" -f "$compose_file" config --services 2>/dev/null | grep -Fxq "$1"
-}
-
-service_container_id() {
-    compose_exec --env-file "$install_conf" -f "$compose_file" ps -q "$1" | head -n 1
-}
-
-wait_for_service() {
-    local service="$1"
-    local attempts="${2:-90}"
-    local container_id=""
-    local running=""
-    local health=""
-
-    while [ "$attempts" -gt 0 ]; do
-        container_id="$(service_container_id "$service")"
-        if [ -n "$container_id" ]; then
-            running="$(engine_exec inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)"
-            health="$(engine_exec inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}running{{end}}' "$container_id" 2>/dev/null || true)"
-            if [ "$running" = "true" ] && { [ "$health" = "healthy" ] || [ "$health" = "running" ]; }; then
-                return 0
-            fi
-        fi
-        attempts=$((attempts - 1))
+# 8. Wait for every application service readiness contract.
+for service_name in "${install_services[@]}"; do
+    container_id="$(current_service_container "$service_name")"
+    [ -n "$container_id" ] || die "Unable to resolve $service_name container"
+    ensure_service_running "$service_name" "$container_id" >/dev/null
+    readiness_path="$(service_readiness_path "$service_name")"
+    deadline=$((SECONDS + 120))
+    until engine_exec exec "$container_id" test -f "$readiness_path"; do
+        ((SECONDS < deadline)) || { engine_exec logs --tail 200 "$container_id"; die "$service_name readiness timeout"; }
         sleep 2
     done
-
-    echo "Service '$service' did not become ready."
-    if [ -n "$container_id" ]; then
-        engine_exec logs --tail 200 "$container_id" || true
-    fi
-    exit 1
-}
-
-print_local_source_diagnostics() {
-    echo "Local source diagnostics:"
-    if command -v git >/dev/null 2>&1 && git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        echo "  local HEAD: $(git -C "$repo_root" log -1 --oneline)"
-    else
-        echo "  local git metadata unavailable"
-    fi
-}
-
-options=":d:g:c:s:j:a:e:vhnp"
-while getopts $options opt; do
-    case $opt in
-        d) dashboard_sql=$OPTARG ;;
-        g) git_revision=$OPTARG ;;
-        c) compose_file=$OPTARG ;;
-        s) install_conf=$OPTARG ;;
-        j) install_conf_map_entries+=("$OPTARG") ;;
-        a)
-            action=$OPTARG
-            if [[ "$action" != "install" && "$action" != "upgrade" ]]; then
-                echo "Invalid action '$action'. Use install or upgrade."
-                exit 1
-            fi
-            ;;
-        e)
-            engine=$OPTARG
-            if [[ "$engine" != "docker" && "$engine" != "podman" ]]; then
-                echo "Invalid engine '$engine'. Use docker or podman."
-                exit 1
-            fi
-            ;;
-        n) skip_dashboard_sql=true ;;
-        p) mode="test" ;;
-        h)
-            usage
-            exit 1
-            ;;
-        v)
-            echo $MEPRAM_VERSION
-            exit 1
-            ;;
-        \?)
-            echo "Invalid Option: -$OPTARG" 1>&2
-            usage
-            exit 1
-            ;;
-        :)
-            echo "Option -$OPTARG requires an argument." >&2
-            exit 1
-            ;;
-        *)
-            echo "Unimplemented option: -$OPTARG" >&2
-            exit 1
-            ;;
-    esac
-done
-shift $((OPTIND-1))
-
-if [ "$mode" = "test" ]; then
-    compose_file="${compose_file:-docker-compose.test.yml}"
-else
-    compose_file="${compose_file:-docker-compose.prod.yml}"
-fi
-
-app_service="${APP_SERVICE:-mepram_api}"
-selected_install_conf="$install_conf"
-for map_entry in "${install_conf_map_entries[@]}"; do
-    svc_name="${map_entry%%,*}"
-    conf_name="${map_entry#*,}"
-    if [ -z "$svc_name" ] || [ -z "$conf_name" ] || [ "$svc_name" = "$map_entry" ]; then
-        echo "Invalid --install_conf_map value '$map_entry'. Expected format: service,path"
-        exit 1
-    fi
-    if [ "$svc_name" != "mepram_api" ] && [ "$svc_name" != "app" ]; then
-        echo "Unknown service '$svc_name' in --install_conf_map. Valid service: mepram_api"
-        exit 1
-    fi
-    selected_install_conf="$conf_name"
 done
 
-if [ "$mode" = "test" ] && [ -z "$selected_install_conf" ]; then
-    selected_install_conf="conf/docker_test_settings.txt"
-fi
-install_conf="$selected_install_conf"
+# 9. Repair running mounts for applications and selected add-ons.
+for service_name in "${permission_services[@]}"; do
+    container_id="$(current_service_container "$service_name")"
+    prepare_running_container_mount_permissions "$service_name" "$container_id"
+done
 
-if [ "$mode" = "production" ] && [ -z "$install_conf" ]; then
-    echo "Production deployments require --install_conf or --install_conf_map mepram_api,<path>."
-    exit 1
-fi
+# 10. Bootstrap only application profiles that require runtime bootstrap.
+for service_name in "${install_services[@]}"; do
+    container_id="$(current_service_container "$service_name")"
+    bootstrap_service "$service_name" "$container_id" "$action" || die "$service_name bootstrap failed"
+done
 
-if [ ! -f "$compose_file" ]; then
-    echo "Compose file '$compose_file' not found"
-    exit 1
-fi
-
-if [ ! -f "$install_conf" ]; then
-    echo "Install configuration '$install_conf' not found"
-    exit 1
+# 11. Load application-owned fixtures/demo files only for a fresh test install.
+if [ "$mode" = test ] && [ "$action" = install ] \
+    && [ "$application_supports_test_data" = true ]; then
+    load_test_deployment_data
 fi
 
-if [ -n "$dashboard_sql" ] && [ ! -f "$dashboard_sql" ]; then
-    echo "Dashboard SQL file '$dashboard_sql' not found"
-    exit 1
-fi
-
-repo_root="$(pwd)"
-build_context_dir="$repo_root"
-temp_install_conf=""
-
-cleanup_temp_conf() {
-    if [ -n "$temp_install_conf" ] && [ -f "$temp_install_conf" ]; then
-        rm -f "$temp_install_conf"
-    fi
-}
-trap cleanup_temp_conf EXIT
-
-if [[ "$install_conf" = /* ]] && [[ "$install_conf" != "$build_context_dir/"* ]]; then
-    temp_install_conf="$build_context_dir/.tmp_docker_install_conf_mepram_$$.txt"
-    echo "Copying $install_conf into temporary file $temp_install_conf for Docker build/runtime."
-    cp "$install_conf" "$temp_install_conf"
-    install_conf="$temp_install_conf"
-fi
-
-if [[ "$install_conf" = "$build_context_dir/"* ]]; then
-    install_conf_container="${install_conf#$build_context_dir/}"
-else
-    install_conf_container="$install_conf"
-fi
-
-host_install_conf_path="$install_conf"
-if [[ "$host_install_conf_path" != /* ]]; then
-    host_install_conf_path="$repo_root/$host_install_conf_path"
-fi
-
-set_engine
-
-app_repo_path="${APP_REPO_PATH:-/srv/mepram-omop-api}"
-config_install_path="$(read_install_conf_value "INSTALL_PATH" "$host_install_conf_path")"
-config_app_install_path="$(read_install_conf_value "APP_INSTALL_PATH" "$host_install_conf_path")"
-app_install_path="${APP_INSTALL_PATH:-${config_app_install_path:-${config_install_path:-/srv/mepram-omop-api}}}"
-db_service="${DB_SERVICE:-mepram_db}"
-dashboard_sql_container_path="${DASHBOARD_SQL_CONTAINER_PATH:-/data/dashboard.sql}"
-api_port="$(read_install_conf_value "MEPRAM_API_PORT" "$host_install_conf_path")"
-api_port="${MEPRAM_API_PORT:-${api_port:-8100}}"
-
-print_local_source_diagnostics
-echo "Deploying MePRAM API containers (compose file: $compose_file) with GIT_REVISION=$git_revision..."
-compose_exec --env-file "$install_conf" -f "$compose_file" build
-compose_exec --env-file "$install_conf" -f "$compose_file" up -d
-
-if service_exists "$db_service"; then
-    echo "Waiting for database service: $db_service"
-    wait_for_service "$db_service" 90
-fi
-
-echo "Waiting for application service: $app_service"
-wait_for_service "$app_service" 90
-
-app_container="$(service_container_id "$app_service")"
-if [ -z "$app_container" ]; then
-    echo "Unable to resolve container for service '$app_service'."
-    exit 1
-fi
-
-container_install_conf_path="$install_conf_container"
-if [[ "$container_install_conf_path" != /* ]]; then
-    container_install_conf_path="$app_repo_path/$container_install_conf_path"
-fi
-
-if ! engine_exec exec "$app_container" test -f "$container_install_conf_path"; then
-    echo "Copying install configuration into container at $container_install_conf_path"
-    engine_exec cp "$host_install_conf_path" "${app_container}:$container_install_conf_path"
-fi
-
-if [ -n "$dashboard_sql" ] && [ "$skip_dashboard_sql" = false ]; then
-    echo "Copying dashboard SQL into the API container"
-    engine_exec exec "$app_container" mkdir -p "$(dirname "$dashboard_sql_container_path")"
-    engine_exec cp "$dashboard_sql" "${app_container}:$dashboard_sql_container_path"
-fi
-
-if [ "$action" = "upgrade" ]; then
-    echo "Running install.sh bootstrap inside the container (upgrade mode)"
-    engine_exec exec "$app_container" bash -c "cd '$app_repo_path' && APP_INSTALL_PATH='$app_install_path' bash install.sh --bootstrap upgrade --git_revision '$git_revision' --conf '$install_conf_container' --skip_apache_restart"
-else
-    echo "Running install.sh bootstrap inside the container (install mode)"
-    engine_exec exec "$app_container" bash -c "cd '$app_repo_path' && APP_INSTALL_PATH='$app_install_path' bash install.sh --bootstrap install --git_revision '$git_revision' --conf '$install_conf_container' --skip_apache_restart"
-fi
-
-if [ -n "$dashboard_sql" ] && [ "$skip_dashboard_sql" = false ]; then
-    echo "Importing dashboard SQL"
-    engine_exec exec "$app_container" bash -c "cd '$app_install_path' && python manage.py import_dashboard_sql '$dashboard_sql_container_path' --truncate"
-else
-    echo "Skipping dashboard SQL import"
-fi
-
-engine_exec exec "$app_container" test -f "$app_install_path/manage.py" || {
-    echo "Error: $app_install_path/manage.py not found after bootstrap. Showing logs:"
-    engine_exec logs --tail 200 "$app_container"
-    exit 1
-}
-
-echo "Marking container installation as ready"
-engine_exec exec "$app_container" sh -c "touch '$app_install_path/.container_install_ready'"
-
-echo "You can now access MePRAM API via:"
-echo "  Health:  http://localhost:${api_port}/v1/health"
-echo "  Swagger: http://localhost:${api_port}/swagger/"
+# 12. Execute the common smoke dispatcher with generated profile checks.
+smoke_args=(--engine "$engine" --compose_file "$compose_file" --env_file "$compose_env_file")
+[ "$mode" = test ] && smoke_args+=(--test)
+bash "$script_dir/scripts/smoke_test.sh" "${smoke_args[@]}"
+echo "$action completed successfully for $APPLICATION_NAME."

@@ -1,0 +1,34 @@
+{
+  "realm": "mepram",
+  "enabled": true,
+  "displayName": "MePRAM",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "loginWithEmailAllowed": true,
+  "clients": [
+    {
+      "clientId": "mepram-api",
+      "name": "MePRAM API",
+      "enabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "pathocore-web",
+      "name": "PathoCore Web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+      ]
+    }
+  ]
+}

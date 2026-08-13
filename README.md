@@ -1,443 +1,557 @@
-# MePRAM API
+# MePRAM OMOP API
 
-Read-only Django/DRF API for aggregated MePRAM dashboard data generated from OMOP data.
+Read-only Django REST API for aggregated MePRAM dashboard data generated from OMOP data.
 
-This MVP intentionally exposes dashboard aggregates, not the full operational/genomic MePRAM domain. It covers cohort summaries, OMOP domains, concepts, facts and measurements. Isolate-level workflows such as ST, carbapenemases, genomic alerts or Microreact need another source of data.
+> Application developers: replace this short description with the domain
+> overview, architecture image, user-facing documentation link, and support
+> channel. The installation sections below are rendered by the deployment
+> standard and are ready to use unless explicitly marked for review.
 
-## Installation
+- [Get the code (required)](#get-the-code-required)
+- [Choose your path](#choose-your-path)
+- [Minimum requirements](#minimum-requirements)
+- [Docker deployment](#docker-deployment)
+  - [Local test stack](#local-test-stack)
+  - [Production container](#production-container)
+  - [Manage containers after installation](#manage-containers-after-installation)
+  - [Upgrade docker deployment](#upgrade-docker-deployment)
+- [Bare-metal deployment (Ubuntu/CentOS)](#bare-metal-deployment-ubuntucentos)
+- [Common operations (Docker + bare-metal)](#common-operations-docker--bare-metal)
+- [Final configuration steps](#final-configuration-steps)
+- [Developer notes](#developer-notes)
+- [Application documentation](#application-documentation)
 
-### Docker Test Installation
-
-This is the recommended entry point for local development, smoke tests and frontend integration work.
-
-The local test stack starts two services:
-
-- `mepram_api`: Django API running inside a container
-- `mepram_db`: MySQL database running inside a container
-
-The database is stored in a Docker volume, so the stack can be stopped and started without losing data unless the volume is explicitly removed.
-
-#### Prerequisites
-
-Before starting, make sure the machine has:
-
-- `git`
-- Docker Engine
-- Docker Compose plugin (`docker compose`)
-
-Check the tooling:
+## Get the code (required)
 
 ```bash
-git --version
-docker --version
-docker compose version
+git clone https://github.com/BU-ISCIII/mepram-omop-api.git mepram-omop-api
+cd mepram-omop-api
 ```
 
-#### 1. Clone The Repository
+For an orchestrated deployment, every external build context in the service
+table must exist at the declared path relative to this checkout.
+
+## Choose your path
+
+| Capability | Supported | Owner or command |
+|---|---:|---|
+| Docker local test | Yes | `container_install.sh --test --engine docker` |
+| Podman local test | Yes | `container_install.sh --test --engine podman` |
+| Docker production | Yes | `container_install.sh --engine docker` |
+| Podman production | Yes | `container_install.sh --engine podman` |
+| Bare metal | Profile-specific | See [Bare-metal deployment](#bare-metal-deployment-ubuntucentos) |
+| Upgrade | Yes | `--action upgrade` |
+| Permission repair | Yes | `--action fix-permissions` |
+| Backup and restore | Yes | Operator-owned; follow [LEAME.md](LEAME.md) |
+
+Services:
+
+| Service | Profile | Build context | Internal port |
+|---|---|---|---:|
+| `app` | `django` | `.` | settings: `APP_PORT` |
+
+- Django services build with an ephemeral settings secret, render protected host settings, and run controlled migration/bootstrap steps.
+
+Selected add-ons:
+
+- Apache source configuration lives under `conf/apache/`; customize its virtual hosts and routes there. The installer renders final bind sources under `deployment/apache/`.
+- Keycloak provides centralized identity with a health-checked MySQL service, realm import, and persistent database state.
+
+## Minimum requirements
+
+- Git and access to every declared build context.
+- Docker Engine with Compose v2, or Podman with a Compose provider.
+- Enough disk and memory for image builds and persistent application data.
+- A protected production settings file for every application and selected add-on.
+- Production DNS, TLS termination, database, storage, email, identity, backup,
+  and monitoring services required by the selected profiles.
+
+Copy each application's settings and each `conf/<addon>/*_production_settings.txt`
+to protected ignored files, set mode `0600`, and replace every `CHANGE_ME`. The exact
+meaning and security classification of settings is in
+[`conf/INSTALL_SETTINGS.md`](conf/INSTALL_SETTINGS.md).
+
+Create the ignored deployment settings directory and copy every production
+template that this topology consumes:
 
 ```bash
-git clone https://github.com/Aberdur/mepram-api.git
-cd mepram-api
-git checkout develop
+install -d -m 0700 deployment/settings
+install -m 0600 conf/docker_production_settings.txt deployment/settings/app_production_settings.txt
+install -m 0600 conf/apache/apache_production_settings.txt deployment/settings/apache_production_settings.txt
+install -m 0600 conf/keycloak/keycloak_production_settings.txt deployment/settings/keycloak_production_settings.txt
 ```
 
-#### 2. Configure The Local Stack
+Edit only the copies under `deployment/settings/`, replace every `CHANGE_ME`,
+and keep their mode at `0600`. Both installation workflows below point to
+these protected copies.
+
+## Docker deployment
+
+Both engines use the same lifecycle and Compose files. Do not invoke Compose
+directly for the first install or an upgrade: the installer also renders
+configuration, prepares permissions, waits for readiness, and runs bootstrap.
+
+### Local test stack
+
+Docker:
 
 ```bash
-cp .env.example .env
+bash container_install.sh --test --action install --engine docker \
+  --git_revision current
 ```
 
-Relevant local settings:
-
-```text
-MEPRAM_DB_NAME=mepram_omop_api
-MEPRAM_DB_USER=mepram
-MEPRAM_DB_PASSWORD=mepram_password
-MEPRAM_DB_PORT_HOST=6608
-MEPRAM_API_PORT=8100
-MEPRAM_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
-MEPRAM_CSRF_TRUSTED_ORIGINS=
-MEPRAM_AUTH_REQUIRED=true
-MEPRAM_CREATE_DEFAULT_SUPERUSER=true
-DJANGO_SUPERUSER_USERNAME=admin
-DJANGO_SUPERUSER_EMAIL=admin@example.org
-DJANGO_SUPERUSER_PASSWORD=admin_pass
-```
-
-#### 3. Build And Start
-
-Run the container installer from the repository root:
+Podman:
 
 ```bash
-bash container_install.sh --test --git_revision current
+bash container_install.sh --test --action install --engine podman \
+  --git_revision current
 ```
 
-Optionally, if this is the first time installing the images, you should provide a path to the SQL database:
+Test settings and test services are disposable. Verify either deployment with:
 
 ```bash
-bash container_install.sh --test --git_revision current --dashboard_sql path/to/dashboard.sql
+bash scripts/smoke_test.sh --test --engine docker
+# or: bash scripts/smoke_test.sh --test --engine podman
 ```
 
-This command will:
+Django test installation creates the disposable database declared by the test
+Compose profile, waits for it, applies committed migrations, optionally loads
+fixtures, runs selected data scripts, collects static files, and performs the
+generated health checks.
 
-* build the application image
-* start `app` and `db`
-* install the Django project inside the container
-* run database migrations
-* load the dashboard tables into the DB
-
-The test compose runs Django migrations on startup. The dashboard tables are Django-managed models, aligned with the PathoCore API approach: schema changes are represented in `core/models.py` and tracked through migrations.
-
-The dashboard dump can also be uploaded later, by running the following commands
+Migration/data scripts are repeatable `django-extensions` runscript names. Use
+`--script_before` for preparation before migrations and `--script` (an alias of
+`--script_after`) for a transformation after migrations:
 
 ```bash
-docker compose -f docker-compose.test.yml exec mepram_api mkdir -p /data
-docker compose -f docker-compose.test.yml cp /path/to/dashboard.sql mepram_api:/data/dashboard.sql
+bash container_install.sh --test --action install --engine docker \
+  --script_before prepare_test_data \
+  --script migrate_optional_values
 ```
 
-Then load the current dashboard dump into the migrated MySQL schema:
+`--demo_data`, `--skip_demo_data`, and `--skip_test_data` are part of the
+standard interface. A project that supplies fixtures or demo files must set
+`application_supports_test_data=true` and implement `load_test_deployment_data`
+in its wrapper; otherwise `--demo_data` is rejected explicitly.
+The same explicit `--demo_data <path>` input may be used on a fresh production
+install when an application needs a controlled seed import. Production never
+selects or loads demo data by default, and upgrades never reload it.
+
+For an automatic first administrator, set `CREATE_INITIAL_SUPERUSER=true` and
+the `DJANGO_SUPERUSER_*` values in the selected test settings before install.
+An existing account is never reset. Open the loopback URL using `APP_PORT` from
+the rendered test environment, or `APACHE_PORT` when the Apache add-on is used.
+
+### Production container
+
+Prepare the protected settings files and deploy a reviewed tag or commit.
+
+Docker:
 
 ```bash
-docker compose -f docker-compose.test.yml exec mepram_api \
-  python manage.py import_dashboard_sql /data/dashboard.sql --truncate
+bash container_install.sh --action install --engine docker \
+  --git_revision <reviewed-tag-or-commit> \
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
-#### 4. Check The Stack
+Podman:
 
 ```bash
-docker compose -f docker-compose.test.yml ps
-curl http://127.0.0.1:8100/v1/health
+bash container_install.sh --action install --engine podman \
+  --git_revision <reviewed-tag-or-commit> \
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
-Useful URLs:
+The installer creates `.env.production.file`; use it for later direct Compose
+operations. Production secrets stay in the protected settings files and are
+not copied into image layers.
 
-- API health: `http://127.0.0.1:8100/v1/health`
-- OpenAPI: `http://127.0.0.1:8100/v1/openapi/`
-- Swagger: `http://127.0.0.1:8100/v1/swagger/`
+#### Persist logs/documents on the host
 
-#### 5. Useful Commands
+| Asset | Production location | Backup/rebuild policy |
+|---|---|---|
+| `app` database | External production database | Database backup before migration |
+| `app` documents | `app_documents` named volume | Volume backup |
+| `app` static | `app_static` named volume | Replaceable through collectstatic |
+| `app` logs | `/var/log/local/mepram-omop-api/apps` host bind | Retain/rotate per institutional log policy |
+| `app` rendered settings | `/srv/containers/bind/mepram-omop-api/settings/` host bind | Protected configuration backup |
+| Apache logs | `/var/log/local/mepram-omop-api/apache` host bind | Retain/rotate per institutional log policy |
+| Rendered Apache configuration | `deployment/apache/` in the deployment checkout | Rebuildable; preserve reviewed source configuration |
+| Keycloak database | `keycloak_db_data` MySQL named volume | Database and identity backup |
 
-Follow API logs:
+The standard fixes application binds below `/srv/containers/bind/mepram-omop-api`
+and logs below `/var/log/local/mepram-omop-api`. The operator must still record the
+backup owner, retention, actual engine volume names, and restore-test evidence
+for every non-rebuildable asset. Never treat a container writable layer as
+persistent storage.
+
+#### Reverse proxy and application server
+
+The selected profiles and add-ons define the internal application server and
+proxy topology. Review public hostnames, TLS ownership, forwarded headers,
+request limits, timeouts, health paths, and static/media routing together.
+
+#### Scheduled jobs
+
+The application developer must list every scheduler/worker, whether a failed
+job blocks a workflow, and how operators inspect and retry it. Do not add an
+untracked host cron job when the application profile owns scheduling.
+
+### Manage containers after installation
+
+Use the engine that performed the installation:
 
 ```bash
-docker compose -f docker-compose.test.yml logs -f mepram_api
+docker compose --env-file .env.production.file -f docker-compose.prod.yml ps
+docker compose --env-file .env.production.file -f docker-compose.prod.yml logs --tail 200
+docker compose --env-file .env.production.file -f docker-compose.prod.yml restart
 ```
-
-Open a shell in the API container:
 
 ```bash
-docker compose -f docker-compose.test.yml exec mepram_api bash
+podman compose --env-file .env.production.file -f docker-compose.prod.yml ps
+podman compose --env-file .env.production.file -f docker-compose.prod.yml logs --tail 200
+podman compose --env-file .env.production.file -f docker-compose.prod.yml restart
 ```
 
-Open a MySQL shell:
+### Upgrade docker deployment
+
+After taking a consistent backup and reading the version-specific upgrade
+notes:
 
 ```bash
-docker compose -f docker-compose.test.yml exec mepram_db \
-  mysql -umepram -pmepram_password mepram_omop_api
+bash container_install.sh --action upgrade --engine podman \
+  --git_revision <new-reviewed-tag-or-commit> \
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
-Run Django checks:
+Replace `podman` with `docker` for a Docker-managed deployment. Stop on build,
+readiness, bootstrap, migration, or smoke-test failure. See [LEAME.md](LEAME.md)
+for the ordered production checklist and rollback decision.
+
+## Bare-metal deployment (Ubuntu/CentOS)
+
+### Install
+
+#### Clone the repository
+
+Use [Get the code (required)](#get-the-code-required) and check out the reviewed
+revision.
+
+#### Prepare the database
+
+Provision the application database and least-privilege account outside the
+installer. Confirm that the host can reach it before bootstrap.
+
+#### Configure install_settings.txt
+
+Start from `conf/docker_production_settings.txt`, but review all paths and
+container-oriented defaults for the target host. Keep the resulting file
+ignored and mode `0600`.
+
+#### Run install.sh
+
+The Django profile includes `install.sh` for application staging and bootstrap,
+but system package, database, web-server, service-manager, TLS, and backup
+provisioning remain host-specific. Bare-metal installation is supported only
+after the application developer documents and tests those integrations.
 
 ```bash
-docker compose -f docker-compose.test.yml run --rm --no-deps \
-  mepram_api python manage.py check
+# Stage application files and dependencies.
+bash install.sh --stage install --git_revision current \
+  --conf deployment/settings/app_production_settings.txt
+
+# Bootstrap the prepared runtime (settings, migrations and static files).
+bash install.sh --bootstrap install \
+  --conf deployment/settings/app_production_settings.txt
 ```
 
-Run tests. The test runner creates a temporary `test_mepram_omop_api` database, so
-use the MySQL root credentials from the local compose only for this command:
+For upgrades, take a backup and replace both `install` actions with `upgrade`.
+Do not use container-oriented paths or defaults on a bare-metal host without an
+application-specific review.
+
+For a host-managed Apache 2.4 deployment, adapt the reviewed virtual host from
+`conf/apache/` to the distribution path. The generated add-on files target the
+container image, so do not copy them blindly without checking module names,
+paths, runtime user, TLS ownership, and log locations.
+
+Ubuntu/Debian baseline:
 
 ```bash
-docker compose -f docker-compose.test.yml exec -T \
-  -e MEPRAM_DB_USER=root \
-  -e MEPRAM_DB_PASSWORD=root \
-  mepram_api python manage.py test core
+sudo cp <reviewed-apache-vhost.conf> /etc/apache2/sites-available/mepram-omop-api.conf
+sudo a2enmod proxy proxy_http headers
+sudo a2ensite mepram-omop-api.conf
+sudo apache2ctl configtest
+sudo systemctl reload apache2
 ```
 
-Stop the containers but keep the database volume:
+CentOS/RHEL baseline:
 
 ```bash
-docker compose -f docker-compose.test.yml down
+sudo cp <reviewed-apache-vhost.conf> /etc/httpd/conf.d/mepram-omop-api.conf
+sudo httpd -t
+sudo systemctl reload httpd
 ```
 
-Stop the containers and remove the database volume:
+The reviewed virtual host must define the public `ServerName`, proxy to the
+Django `APP_PORT`, serve the correct static/media paths, preserve forwarded
+scheme/host headers, and use institutionally managed TLS and logs.
+
+### Upgrade bare-metal deployment
+
+Follow the same staged lifecycle with `upgrade` only after a consistent backup
+and review of the version-specific guide.
+
+## Common operations (Docker + bare-metal)
+
+### Database creation, users and grants
+
+Production databases are externally managed unless the application documents a
+different supported topology. Create a dedicated schema and least-privilege
+account, verify connectivity from the application container, and keep DBA
+commands and credentials outside this repository.
+
+Connect as an authorized database administrator without putting the password
+on the command line:
 
 ```bash
-docker compose -f docker-compose.test.yml down -v
+DB_HOST='CHANGE_ME'
+DB_PORT='3306'
+DB_ADMIN='CHANGE_ME'
+DB_NAME='CHANGE_ME'
+DB_USER='CHANGE_ME'
+mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_ADMIN" --password
 ```
 
-## API Reference
-
-All endpoints are read-only and are exposed under `/v1`. The API serves Django-managed dashboard tables imported from `dashboard.sql`; it does not query OMOP source tables directly.
-
-Common query parameters:
-
-- `q`: case-insensitive text search over concept names where supported.
-- `limit`: maximum rows to return. Default `100`, maximum `1000`.
-- `offset`: first row to return. Default `0`.
-- `event_type`: filters aggregate tables by event type, for example `current` if present in the loaded dump.
-- `stratification`: aggregate shape for fact and measurement endpoints. Accepted values are `none`, `age`, `sex`, `age_sex`.
-
-### `GET /v1/health`
-
-Operational health endpoint. It verifies database connectivity and checks every Django-managed dashboard table.
-
-Response fields:
-
-- `status`: `UP` when all dashboard tables exist, `DEGRADED` when the database is reachable but one or more tables are missing, `DOWN` when the database cannot be queried.
-- `schema`: configured dashboard schema/database name.
-- `tables`: one item per dashboard table with `table`, `exists` and `row_count`.
-- `checked_at`: ISO timestamp of the check.
-
-Use this endpoint after migrations and imports to confirm that the API is backed by the expected tables and row counts.
-
-### `GET /v1/metadata`
-
-Returns global metadata used by clients to build filters and navigation.
-
-Response fields:
-
-- `schema`: configured dashboard schema/database name.
-- `domains`: list of OMOP domains with `domain_id`, `medical_concepts` and `participants`.
-- `event_types`: distinct event types available in concept aggregates.
-- `age_groups`: distinct cohort age groups.
-- `genders`: distinct cohort gender labels.
-- `vocabularies`: distinct OMOP vocabularies present in the concept catalogue.
-- `total_patients`: number of patients in `dim_patient`.
-- `capabilities`: feature flags returned by `/v1/capabilities`.
-
-### `GET /v1/capabilities`
-
-Returns boolean feature flags describing the current API scope. It explicitly marks clinical aggregates, age/sex stratifications and numeric/categorical measurements as supported, and isolate explorer/genomic alerts as unsupported.
-
-### `GET /v1/cohort/report`
-
-Displays the complete descriptive reports from the imported dashboard database tables. The response follows the report JSON structure: top-level `report` metadata, `sections` with the naming of each section and the tables associated, and the `data_tables` with the data to generate the tables. It includes table objects with `columns`, `n_rows`, `default_order` and positional `rows`.
-
-The reports contains cohort summaries, domain counts, concept aggregates, numeric measurement summaries and categorical measurement summaries, including available age, sex and age+sex stratifications.
-
-### `GET /v1/cohort/summary`
-
-Returns cohort-level patient distributions from `dim_patient`.
-
-Response fields:
-
-- `total_patients`: total patients in the dashboard cohort.
-- `by_age`: rows with `age_group` and `patients`.
-- `by_sex`: rows with `gender` and `patients`.
-- `by_age_sex`: rows with `age_group`, `gender` and `patients`.
-
-This endpoint is intended for high-level cohort cards and demographic charts.
-
-### `GET /v1/domains`
-
-Lists OMOP domains available in the dashboard.
-
-Query parameters:
-
-- `q` optional. When omitted, values come from `fact_domain`. When provided, the API searches matching concept names and recomputes domain-level distinct concept and patient counts from `events_long`.
-
-Response rows:
-
-- `domain_id`: OMOP domain label, for example `Condition` or `Measurement`.
-- `medical_concepts`: number of distinct concepts in that domain.
-- `participants`: number of distinct patients represented in that domain.
-
-### `GET /v1/domains/{domain_id}/concepts`
-
-Lists concepts for one OMOP domain and reports how many patients have evidence for each concept.
-
-Path parameters:
-
-- `domain_id`: OMOP domain to inspect.
-
-Query parameters:
-
-- `q` optional concept-name search.
-- `limit`, `offset` for pagination.
-
-Response fields:
-
-- `domain_id`: requested domain.
-- `total_participants`: distinct patients with at least one matching event in the requested domain.
-- `data`: concept rows with `concept_id`, `concept_name`, `vocabulary_id`, `concept_code`, `participants` and `pct`.
-
-`pct` is the concept participant count over the whole dashboard cohort, not over only the selected domain.
-
-### `GET /v1/concepts`
-
-Searches the imported OMOP concept catalogue without returning aggregate counts.
-
-Query parameters:
-
-- `q` optional concept-name search.
-- `domain_id` optional exact OMOP domain filter.
-- `vocabulary_id` optional exact vocabulary filter.
-- `limit`, `offset` for pagination.
-
-Response rows:
-
-- `concept_id`: OMOP concept identifier.
-- `concept_name`: display name.
-- `domain_id`: OMOP domain.
-- `vocabulary_id`: source vocabulary.
-- `concept_code`: source concept code.
-
-### `GET /v1/concepts/{concept_id}`
-
-Returns catalogue metadata for one concept. It returns `404` with `{"error": "Concept not found"}` when the concept is not loaded.
-
-Use `/v1/concepts/{concept_id}/detail` when aggregate counts, stratifications or measurement summaries are needed.
-
-### `GET /v1/concepts/{concept_id}/detail`
-
-Returns a dashboard detail view for one concept.
-
-Query parameters:
-
-- `event_type` optional. When provided, all aggregate sections are filtered to that event type.
-
-Response fields:
-
-- `concept`: concept metadata.
-- `summary`: overall rows with `event_type`, `record_count`, `record_pct_overall`, `patient_count` and `patient_pct`.
-- `by_age`: rows with `event_type`, `age_group`, `patient_count`, `patient_pct_group` and `patient_pct_concept`.
-- `by_sex`: rows with `event_type`, `gender`, `patient_count`, `patient_pct_group` and `patient_pct_concept`.
-- `by_age_sex`: rows with `event_type`, `age_group`, `gender`, `patient_count`, `patient_pct_group` and `patient_pct_concept`.
-- `measurements.numeric`: numeric measurement summaries for the same concept.
-- `measurements.categorical`: categorical measurement summaries for the same concept.
-
-Percentage semantics:
-
-- `record_pct_overall`: record percentage over all records in the dashboard aggregate.
-- `patient_pct`: patient percentage for the concept over the cohort.
-- `patient_pct_group`: patient percentage within the age/sex stratum.
-- `patient_pct_concept`: patient percentage of the concept distributed across strata.
-
-### `GET /v1/facts/concepts`
-
-Lists precomputed concept-level aggregates. This is the main endpoint for ranked clinical concept charts.
-
-Query parameters:
-
-- `q` optional concept-name search.
-- `domain_id` optional exact domain filter.
-- `event_type` optional exact event type filter.
-- `stratification`: `none`, `age`, `sex`, `age_sex`.
-- `limit`, `offset` for pagination.
-
-Base response columns for every stratification:
-
-- `concept_id`, `concept_name`, `domain_id`, `vocabulary_id`, `concept_code`, `event_type`.
-
-Additional columns by stratification:
-
-- `none`: `record_count`, `record_pct_overall`, `patient_count`, `patient_pct`.
-- `age`: `age_group`, `patient_count`, `patient_pct_group`, `patient_pct_concept`.
-- `sex`: `gender`, `patient_count`, `patient_pct_group`, `patient_pct_concept`.
-- `age_sex`: `age_group`, `gender`, `patient_count`, `patient_pct_group`, `patient_pct_concept`.
-
-### `GET /v1/measurements/numeric`
-
-Lists numeric measurement aggregates, including descriptive statistics.
-
-Query parameters:
-
-- `q` optional concept-name search.
-- `concept_id` optional exact concept filter.
-- `event_type` optional exact event type filter.
-- `stratification`: `none`, `age`, `sex`, `age_sex`.
-- `limit`, `offset` for pagination.
-
-Base response columns:
-
-- `concept_id`, `concept_name`, `vocabulary_id`, `concept_code`, `event_type`, `unit_concept_id`, `unit_name`, `n_records`, `n_patients`, `mean_value`, `sd_value`, `min_value`, `q1_value`, `median_value`, `q3_value`, `max_value`.
-
-When stratified, rows also include `age_group`, `gender` or both, depending on `stratification`.
-
-### `GET /v1/measurements/categorical`
-
-Lists categorical measurement aggregates, where each row represents a concept value/category.
-
-Query parameters:
-
-- `q` optional concept-name search.
-- `concept_id` optional exact concept filter.
-- `event_type` optional exact event type filter.
-- `stratification`: `none`, `age`, `sex`, `age_sex`.
-- `limit`, `offset` for pagination.
-
-Base response columns:
-
-- `concept_id`, `concept_name`, `vocabulary_id`, `concept_code`, `event_type`, `value_as_concept_id`, `value_concept_name`, `record_count`, `patient_count`.
-
-Additional columns by stratification:
-
-- `none`: `patient_pct`.
-- `age`: `age_group`, `patient_pct_group`, `patient_pct_concept`.
-- `sex`: `gender`, `patient_pct_group`, `patient_pct_concept`.
-- `age_sex`: `age_group`, `gender`, `patient_pct_group`, `patient_pct_concept`.
-
-## Reloading Dashboard Data
-
-To reload the dump into the existing database:
+Create the application database and account. Replace every angle-bracket value;
+restrict the account host further than `%` when the network topology permits.
+
+```sql
+CREATE DATABASE `<db-name>`
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER '<db-user>'@'%' IDENTIFIED BY '<strong-generated-password>';
+GRANT ALL PRIVILEGES ON `<db-name>`.* TO '<db-user>'@'%';
+FLUSH PRIVILEGES;
+```
+
+Verify the same endpoint and least-privilege credentials configured for the
+application:
 
 ```bash
-docker compose -f docker-compose.test.yml exec mepram_api \
-  python manage.py import_dashboard_sql /data/dashboard.sql --truncate
+mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password \
+  --database="$DB_NAME" --execute='SELECT 1;'
 ```
 
-To recreate the local database from scratch:
+### Backups
+
+Back up every non-rebuildable row in the persistence table from one consistent
+recovery point before installation or upgrade. Record the revision, image IDs,
+settings files, and backup identifiers.
 
 ```bash
-docker compose -f docker-compose.test.yml down -v
-docker compose -f docker-compose.test.yml up -d --build
+BACKUP_DIR="/srv/containers/backup/mepram-omop-api/$(date +%Y%m%d_%H%M%S)"
+SETTINGS_FILE='deployment/settings/app_production_settings.txt'
+DOCUMENTS_VOLUME='CHANGE_ME'
+DB_HOST='CHANGE_ME'
+DB_PORT='3306'
+DB_NAME='CHANGE_ME'
+DB_USER='CHANGE_ME'
+mkdir -p "$BACKUP_DIR"
+git rev-parse HEAD > "$BACKUP_DIR/git-revision.txt"
+cp .env.production.file "$SETTINGS_FILE" "$BACKUP_DIR/"
+chmod -R go-rwx "$BACKUP_DIR"
+
+mysqldump --single-transaction --routines --triggers \
+  --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password \
+  "$DB_NAME" > "$BACKUP_DIR/database.sql"
+
+podman volume ls | grep 'mepram-omop-api'
+podman volume export "$DOCUMENTS_VOLUME" > "$BACKUP_DIR/documents.tar"
+tar -C /srv/containers/bind -czf "$BACKUP_DIR/bind-mounts.tar.gz" mepram-omop-api
+sha256sum "$BACKUP_DIR"/* > "$BACKUP_DIR/SHA256SUMS"
 ```
 
-Use `down -v` only when you want to discard the local test database completely.
+For Docker, archive a named volume through a temporary container after ensuring
+the application is not writing to it:
 
-## PathoCore Web Integration
-
-For local frontend integration, configure `pathocore-web` with:
-
-```text
-VITE_USE_CASE_DATA_MODE=mepram-api
-VITE_MEPRAM_API_BASE_URL=http://127.0.0.1:8100/v1
+```bash
+docker run --rm \
+  --volume "$DOCUMENTS_VOLUME":/data:ro \
+  --volume "$BACKUP_DIR":/backup \
+  alpine tar -C /data -cf /backup/documents.tar .
 ```
 
-The MePRAM API CORS allowlist is controlled with:
+The full ordered backup checklist, including logs and image metadata, is in
+[LEAME.md](LEAME.md).
 
-```text
-MEPRAM_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
+### Restore / rollback
+
+An image-only rollback is safe only when the previous application version
+supports the current schema and persistent-file format. Otherwise stop writes,
+restore the database and files from the same recovery point, deploy the recorded
+compatible revision, and rerun all smoke tests.
+
+Compatible application-only rollback:
+
+```bash
+bash container_install.sh --action upgrade --engine podman \
+  --git_revision <previous-reviewed-revision> \
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
-When the API is deployed behind an HTTPS reverse proxy and Django forms are
-enabled, for example the Django admin login, configure the
-public API origin as a trusted CSRF origin:
+Full restore when schema or persistent-file formats are incompatible:
 
-```text
-MEPRAM_CSRF_TRUSTED_ORIGINS=https://mepram-api-omop.<domain>
+```bash
+BACKUP_DIR='/srv/containers/backup/mepram-omop-api/CHANGE_ME'
+DOCUMENTS_VOLUME='CHANGE_ME'
+DB_HOST='CHANGE_ME'
+DB_PORT='3306'
+DB_NAME='CHANGE_ME'
+DB_USER='CHANGE_ME'
+podman compose --env-file .env.production.file -f docker-compose.prod.yml down
+mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password \
+  "$DB_NAME" < "$BACKUP_DIR/database.sql"
+podman volume import "$DOCUMENTS_VOLUME" "$BACKUP_DIR/documents.tar"
+tar -C /srv/containers/bind -xzf "$BACKUP_DIR/bind-mounts.tar.gz"
+bash container_install.sh --action fix-permissions --engine podman \
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
-The API also trusts the reverse proxy `X-Forwarded-Host` and
-`X-Forwarded-Proto` headers so Django validates the public host and HTTPS origin
-instead of the internal container URL.
+Then deploy the revision recorded in `git-revision.txt`, start the deployment,
+and run the smoke test before reopening service. For Docker volume restoration,
+reverse the temporary-container archive command by mounting the empty target
+volume at `/data` and extracting `/backup/documents.tar` there.
 
-## Current Scope
+### What to do if something fails
 
-Covered by `dashboard.sql`:
+1. Preserve installer output, `compose ps`, image IDs, and service logs.
+2. Test the direct application health endpoint and dependencies.
+3. Test proxy routing, public DNS, and TLS after direct health succeeds.
+4. Run permission repair for reviewed ownership or SELinux drift:
 
-- clinical cohort summaries
-- OMOP domains and concepts
-- concept aggregates
-- numeric and categorical measurements
-- age, sex and age+sex stratifications
-- report aggregates
+   ```bash
+   bash container_install.sh --action fix-permissions --engine podman \
+     --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+   ```
 
-Not covered by `dashboard.sql`:
+5. Do not fake migrations, delete volumes, or rebuild from an unrecorded
+   revision as a first response.
 
-- isolate-level explorer
-- ST and clonality
-- carbapenemases or AMR gene calls
-- genomic alerts
-- Microreact exports
-- real territorial/center operational coverage
+### Service-specific operational commands
+
+#### Django service `app`
+
+```bash
+# Logs and an interactive shell (replace podman with docker when applicable).
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  logs --tail 200 app
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  exec app bash
+
+# Rebuild static assets without running migrations.
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  exec app bash -lc \
+  'cd "$INSTALL_PATH" && source virtualenv/bin/activate && python manage.py collectstatic --noinput'
+
+# Inspect Django and migration state before deciding whether to recover.
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  exec app bash -lc \
+  'cd "$INSTALL_PATH" && source virtualenv/bin/activate && python manage.py check --deploy && python manage.py showmigrations --plan'
+```
+
+For bootstrap recovery, fix the cause and rerun `container_install.sh` with the
+same revision, protected configuration, and `--action install` or `upgrade`.
+This safely recreates the temporary runtime configuration and repeats the
+controlled migration/fixture/static lifecycle. Direct `manage.py migrate` is a
+diagnostic last resort and must use the same backup and release procedure.
+
+#### Apache service
+
+```bash
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  logs --tail 200 apache
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  exec apache httpd -t
+
+APACHE_PORT='CHANGE_ME'
+SERVER_STATUS_SERVER_NAME='localhost'
+curl --fail --show-error \
+  --header "Host: $SERVER_STATUS_SERVER_NAME" \
+  "http://127.0.0.1:$APACHE_PORT/server-status?auto"
+```
+
+Keep `SERVER_STATUS_ALLOW_FROM` limited to trusted diagnostic hosts. If SELinux
+is enabled, inspect the persistent log bind and confirm a container-compatible
+label before restarting:
+
+```bash
+ls -ldZ /var/log/local/mepram-omop-api/apache
+```
+
+An Apache failure containing `ModSecurity: Failed to open debug log file` often
+means the existing `modsec_debug.log` inode has stale ownership or labeling.
+Preserve it for diagnosis, run `fix-permissions`, and restart Apache. If it must
+be replaced, move it to a timestamped backup instead of deleting evidence:
+
+```bash
+sudo mv /var/log/local/mepram-omop-api/apache/modsec_debug.log \
+  /var/log/local/mepram-omop-api/apache/modsec_debug.log.blocked
+bash container_install.sh --action fix-permissions --engine podman \
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+podman compose --env-file .env.production.file -f docker-compose.prod.yml restart apache
+```
+
+## Final configuration steps
+
+The application developer must document real post-install workflows here:
+initial administrator ownership, email delivery, identity-provider clients,
+storage credentials, scheduled jobs, and one representative user workflow.
+The generated baseline creates the initial Django administrator only when its
+profile settings explicitly request it.
+
+## Developer notes
+
+### Shared container installer library
+
+`container_install.sh` sources the vendored files under
+`deployment/lib/container/`. Do not edit those copies. Check or update them
+from the standards repository with `scaffold.py check-lib` or `sync-lib`.
+
+### Schema migration workflow
+
+Django migrations MUST be generated, reviewed, tested, and committed with the
+release. Installation and production upgrade run `migrate --noinput`; they
+MUST NOT run `makemigrations` or silently manufacture schema history.
+
+For a legacy application entering the standard:
+
+1. Generate and commit baseline migrations from the last supported stable tag.
+2. Generate and commit new migrations for later model changes.
+3. Verify the committed migration history matches the supported production
+   database before deploying it.
+4. Put ordered data transformations in version-specific upgrade guides and run
+   them through `--script_before`, `--script_after`, or `--script`.
+5. Verify `showmigrations --plan` has no unapplied entries after bootstrap.
+
+Never use `--fake` to conceal a failed or partially applied migration. New
+installations and upgrades use the committed migration graph.
+
+### Persistent host paths
+
+Keep source checkouts, protected configuration, bind mounts, engine-managed
+volumes, logs, and backups separate. For rootless Podman, run the installer as
+the same unprivileged account every time and use `fix-permissions` instead of
+manually changing engine storage.
+
+### Verification of the installation
+
+```bash
+bash scripts/smoke_test.sh --engine podman
+```
+
+Application developers must extend the baseline smoke test with authenticated
+and domain-specific read workflows without removing the generated checks.
+
+## Application documentation
+
+Application developers: replace this paragraph with links to user,
+administrator, API, upgrade, and support documentation.

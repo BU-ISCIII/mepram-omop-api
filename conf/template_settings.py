@@ -1,0 +1,241 @@
+"""Django settings rendered by the BU-ISCIII deployment library.
+
+This is an application-owned template. Keep the exact Django applications and
+project behavior here; deployment-specific values are replaced from the
+selected production or test installation settings file.
+"""
+
+import os
+from pathlib import Path
+
+
+def env_bool(name, default=False):
+    """Read a conventional boolean environment variable."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_list(name, default=""):
+    """Read a comma-separated environment variable as a clean list."""
+    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# The renderer replaces this complete line and preserves the existing generated
+# value during upgrades. Never commit a real production secret here.
+SECRET_KEY = "PLACEHOLDER"
+DEBUG = djangodebug
+ALLOWED_HOSTS = [
+    host.strip() for host in "djangoallowedhosts".split(",") if host.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in "djangocsrftrustedorigins".split(",")
+    if origin.strip()
+]
+
+# Add every local and third-party Django application used by the project.
+# Application ordering can affect template overrides and startup behavior.
+# Prefer an explicit AppConfig path when the application provides one:
+#     "your_app.apps.YourAppConfig",
+INSTALLED_APPS = [
+    # MePRAM exposes a Django REST Framework API and generates its OpenAPI
+    # schema with drf-spectacular. CoreConfig registers the API models and
+    # management commands, including import_dashboard_sql.
+    "rest_framework",
+    "drf_spectacular",
+    "core.apps.CoreConfig",
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+]
+
+# Optional application display metadata. Define the exact structure consumed
+# by the project; this is not a standard Django setting.
+# APPS_NAMES = [
+#     ["your_app", "Human-readable application name"],
+# ]
+
+MIDDLEWARE = [
+    # The API serves browser clients hosted separately from Django. Keep the
+    # application-owned CORS middleware first so it can add headers to every
+    # response, including errors returned by later middleware.
+    "core.api.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+ROOT_URLCONF = "conf.urls"
+WSGI_APPLICATION = "conf.wsgi.application"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        # Add application-owned template directories when needed:
+        # "DIRS": [BASE_DIR / "documents" / "service_templates"],
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+                "django.template.context_processors.i18n",
+            ],
+        },
+    }
+]
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": "djangodbname",
+        "USER": "djangouser",
+        "PASSWORD": "djangopass",
+        "HOST": "djangohost",
+        "PORT": "djangoport",
+        "CONN_MAX_AGE": dbconnmaxage,
+    }
+}
+
+# Dashboard tables are normally stored in the primary database. The override
+# remains available for deployments that expose the imported OMOP aggregates
+# through a separate schema name.
+MEPRAM_DASHBOARD_SCHEMA = os.environ.get(
+    "MEPRAM_DASHBOARD_SCHEMA", DATABASES["default"]["NAME"]
+)
+
+# Browser clients are served independently from this API. This allow-list is
+# intentionally separate from Django's CSRF origins because the API can be
+# read-only and token-authenticated while the admin still uses CSRF protection.
+MEPRAM_CORS_ALLOWED_ORIGINS = env_list("MEPRAM_CORS_ALLOWED_ORIGINS")
+
+# Authentication can be disabled for isolated local/test environments. When
+# enabled, every API request must carry a Keycloak-issued RS256 bearer token.
+MEPRAM_AUTH_REQUIRED = env_bool("MEPRAM_AUTH_REQUIRED", False)
+MEPRAM_DOCS_REQUIRE_STAFF = env_bool("MEPRAM_DOCS_REQUIRE_STAFF", True)
+
+# Keycloak identity and verification endpoints. Production validation should
+# require all four identity values whenever MEPRAM_AUTH_REQUIRED is enabled.
+MEPRAM_KEYCLOAK_ISSUER = os.environ.get("MEPRAM_KEYCLOAK_ISSUER", "")
+MEPRAM_KEYCLOAK_JWKS_URL = os.environ.get("MEPRAM_KEYCLOAK_JWKS_URL", "")
+MEPRAM_KEYCLOAK_AUDIENCE = os.environ.get("MEPRAM_KEYCLOAK_AUDIENCE", "mepram-api")
+MEPRAM_KEYCLOAK_CLIENT_ID = os.environ.get(
+    "MEPRAM_KEYCLOAK_CLIENT_ID", "pathocore-web"
+)
+MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS = int(
+    os.environ.get("MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS", "300")
+)
+MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS = int(
+    os.environ.get("MEPRAM_KEYCLOAK_JWKS_TIMEOUT_SECONDS", "5")
+)
+
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
+    },
+]
+
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "Europe/Madrid"
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "static"
+MEDIA_URL = "/documents/"
+MEDIA_ROOT = BASE_DIR / "documents"
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "emailhostserver"
+EMAIL_PORT = emailport
+EMAIL_HOST_USER = "emailhostuser"
+EMAIL_HOST_PASSWORD = "emailhostpassword"
+EMAIL_USE_TLS = emailhosttls
+
+# Optional django-crontab configuration. Enable "django_crontab" in
+# INSTALLED_APPS before activating these settings.
+# LOG_CRONTAB_FILE = BASE_DIR / "logs" / "crontab.log"
+# CRONJOBS = [
+#     ("*/15 * * * *", "your_app.cron.job", f">>{LOG_CRONTAB_FILE}"),
+# ]
+# CRONTAB_COMMAND_SUFFIX = "2>&1"
+
+# Optional upload limit in bytes. Django's default is 2.5 MiB.
+# DATA_UPLOAD_MAX_MEMORY_SIZE = 10_000_000
+
+# Enable only when every request reaches Django through a trusted proxy that
+# overwrites X-Forwarded-Proto. Incorrect use lets clients spoof HTTPS.
+# SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Add application/framework-specific settings below, for example REST framework
+# authentication, Swagger, Crispy Forms, logging or cleanup policies.
+
+# Apply the same configurable throttle to anonymous and authenticated clients.
+# This protects aggregate endpoints without embedding an environment-specific
+# rate in the generated Python settings file.
+PUBLIC_API_THROTTLE_RATE = os.environ.get("PUBLIC_API_THROTTLE_RATE", "500/hour")
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        ["core.api.authentication.KeycloakJWTAuthentication"]
+        if MEPRAM_AUTH_REQUIRED
+        else []
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        ["rest_framework.permissions.IsAuthenticated"]
+        if MEPRAM_AUTH_REQUIRED
+        else ["rest_framework.permissions.AllowAny"]
+    ),
+    # The custom token user is not a Django ORM user. Disabling DRF's fallback
+    # user/token objects preserves the API's stateless authentication model.
+    "UNAUTHENTICATED_USER": None,
+    "UNAUTHENTICATED_TOKEN": None,
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": PUBLIC_API_THROTTLE_RATE,
+        "user": PUBLIC_API_THROTTLE_RATE,
+    },
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "MePRAM API",
+    "DESCRIPTION": (
+        "Read-only API for aggregated MePRAM dashboard data. "
+        "Data endpoints require bearer authentication when enabled."
+    ),
+    "VERSION": None,
+    "SERVE_INCLUDE_SCHEMA": True,
+    "SCHEMA_PATH_PREFIX": r"/v[0-9]+",
+    "SCHEMA_PATH_PREFIX_TRIM": True,
+    "SERVERS": [{"url": "/v1", "description": "MePRAM API v1"}],
+    "SORT_OPERATIONS": False,
+    "SECURITY": [{"bearerAuth": []}] if MEPRAM_AUTH_REQUIRED else [],
+}
+
+LOGIN_URL = "/admin/login/"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
