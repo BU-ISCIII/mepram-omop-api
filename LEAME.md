@@ -56,7 +56,9 @@ storage y no debe modificarse manualmente.
 │   └── mepram-omop-api/               # Backup central recomendado
 ├── bind/
 │   └── mepram-omop-api/
-│       └── settings/                   # settings.py renderizado por servicio
+│       ├── settings/                   # settings.py renderizado por servicio
+│       └── keycloak/
+│           └── realm-import/           # JSON staged para bind read-only
 ├── shared/                             # Datos compartidos entre aplicaciones
 └── storage/
     └── <usuario-podman>/               # Storage rootless gestionado por Podman
@@ -79,6 +81,7 @@ Persistencia declarada por el despliegue:
 | Apache logs | `/var/log/local/mepram-omop-api/apache` host bind | Retain/rotate per institutional log policy |
 | Rendered Apache configuration | `deployment/apache/` in the deployment checkout | Rebuildable; preserve reviewed source configuration |
 | Keycloak database | `keycloak_db_data` MySQL named volume | Database and identity backup |
+| Keycloak staged realm | `/srv/containers/bind/mepram-omop-api/keycloak/realm-import/` read-only host bind | Back up with deployment configuration; reproducible bootstrap input, not authoritative identity state |
 
 ## Preparar directorios del host
 
@@ -97,6 +100,20 @@ sudo chown -R <usuario-podman>:<usuario-podman> \
   /srv/containers/bind/mepram-omop-api \
   /var/log/local/mepram-omop-api
 ```
+
+El instalador crea automaticamente
+`/srv/containers/bind/mepram-omop-api/keycloak/realm-import` porque el usuario
+del despliegue ya controla el directorio bind de la aplicacion. Si la politica
+del host exige crear previamente cada ruta, ejecutar tambien:
+
+```bash
+sudo mkdir -p /srv/containers/bind/mepram-omop-api/keycloak/realm-import
+sudo chown -R <usuario-podman>:<usuario-podman> \
+  /srv/containers/bind/mepram-omop-api/keycloak
+```
+
+No modificar los permisos de `conf/keycloak/realm-import/`. El instalador
+asigna solo las copias staged a `1000:0` con modo `0640`.
 
 ## Actualizar codigo
 

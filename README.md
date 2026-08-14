@@ -178,6 +178,7 @@ not copied into image layers.
 | Apache logs | `/var/log/local/mepram-omop-api/apache` host bind | Retain/rotate per institutional log policy |
 | Rendered Apache configuration | `deployment/apache/` in the deployment checkout | Rebuildable; preserve reviewed source configuration |
 | Keycloak database | `keycloak_db_data` MySQL named volume | Database and identity backup |
+| Keycloak staged realm | `/srv/containers/bind/mepram-omop-api/keycloak/realm-import/` read-only host bind | Back up with deployment configuration; reproducible bootstrap input, not authoritative identity state |
 
 The standard fixes application binds below `/srv/containers/bind/mepram-omop-api`
 and logs below `/var/log/local/mepram-omop-api`. The operator must still record the
@@ -499,6 +500,22 @@ bash container_install.sh --action fix-permissions --engine podman \
   --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 podman compose --env-file .env.production.file -f docker-compose.prod.yml restart apache
 ```
+
+#### Keycloak realm bind
+
+The installer automatically copies repository-owned JSON from
+`KEYCLOAK_REALM_SOURCE_PATH` to the deployment-owned `KEYCLOAK_IMPORT_PATH`
+before Compose starts. The production bind source is:
+
+```text
+/srv/containers/bind/mepram-omop-api/keycloak/realm-import/
+```
+
+Do not modify ownership or modes on `conf/keycloak/realm-import/`. The installer
+creates the staging directory when the application bind root is writable and
+assigns only the staged copies to Keycloak as `1000:0` with mode `0640`. Include
+the staged directory in configuration backups; `keycloak_db_data` remains the
+authoritative identity backup.
 
 ## Final configuration steps
 
