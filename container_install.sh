@@ -151,6 +151,14 @@ prepare_application_host_sources() {
     export INSTALL_PATH="$(service_install_path "$apache_config_service")"
     export APACHE_PROXY_TIMEOUT="${APACHE_PROXY_TIMEOUT:-$(service_environment_value "$apache_config_service" GUNICORN_TIMEOUT 120)}"
     export APACHE_LOG_STEM="${APACHE_LOG_STEM:-$(normalize_apache_server_name "$APACHE_SERVER_NAME")}"
+    export APACHE_KEYCLOAK_SERVER_NAME="${APACHE_KEYCLOAK_SERVER_NAME:?APACHE_KEYCLOAK_SERVER_NAME is required}"
+    export APACHE_KEYCLOAK_UPSTREAM_SERVICE="${APACHE_KEYCLOAK_UPSTREAM_SERVICE:-keycloak}"
+    export APACHE_KEYCLOAK_UPSTREAM_PORT="${APACHE_KEYCLOAK_UPSTREAM_PORT:-8080}"
+    export APACHE_KEYCLOAK_PROXY_TIMEOUT="${APACHE_KEYCLOAK_PROXY_TIMEOUT:-$APACHE_PROXY_TIMEOUT}"
+    export APACHE_KEYCLOAK_LOG_STEM="${APACHE_KEYCLOAK_LOG_STEM:-$(normalize_apache_server_name "$APACHE_KEYCLOAK_SERVER_NAME")}"
+    export APACHE_KEYCLOAK_FORWARDED_PROTO="${APACHE_KEYCLOAK_FORWARDED_PROTO:-$APACHE_FORWARDED_PROTO}"
+    export APACHE_KEYCLOAK_FORWARDED_PORT="${APACHE_KEYCLOAK_FORWARDED_PORT:-$APACHE_FORWARDED_PORT}"
+    export APACHE_KEYCLOAK_LIMIT_REQUEST_BODY="${APACHE_KEYCLOAK_LIMIT_REQUEST_BODY:-$APACHE_LIMIT_REQUEST_BODY}"
     for apache_conf_name in 00-logs.conf 01-reverse-proxy.conf 02-server-status.conf; do
         [ -f "$apache_source_dir/$apache_conf_name" ] || {
             echo "Apache source configuration not found: $apache_source_dir/$apache_conf_name" >&2
