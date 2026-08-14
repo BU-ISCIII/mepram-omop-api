@@ -8,8 +8,8 @@ PYTHON_BIN_PATH='python3.12'
 
 ### Application-specific installation modules
 # Optional lists used only when install.sh implements these operations.
-REQUIRED_MODULES=''
-MIGRATION_MODULES=''
+REQUIRED_MODULES='core'
+MIGRATION_MODULES='core'
 
 ### Container runtime identity
 APP_UID='1212'
