@@ -5,6 +5,12 @@ despliegue de produccion. Los comandos generados son reutilizables; antes de la
 aprobacion, el responsable de la aplicacion debe completar los campos marcados
 `<REVISAR>` con valores o referencias institucionales verificadas.
 
+MePRAM OMOP API publica agregados clinicos generados desde OMOP mediante
+Django. Apache sirve dos nombres DNS: uno para la API y otro para Keycloak. La
+API consulta la base MySQL externa `mepram_omop`; Keycloak usa su propia base
+MySQL persistente. El esquema completo de infraestructura y el alcance de la
+API estan al principio de [README.md](README.md).
+
 ## Indice
 
 - [Requisitos](#requisitos)
@@ -18,6 +24,7 @@ aprobacion, el responsable de la aplicacion debe completar los campos marcados
 - [Rollback](#rollback)
 - [Reparar permisos](#reparar-permisos)
 - [Operaciones utiles](#operaciones-utiles)
+- [Servicio Keycloak](#servicio-keycloak)
 - [Notas de permisos](#notas-de-permisos)
 
 ## Requisitos
@@ -73,15 +80,15 @@ Persistencia declarada por el despliegue:
 
 | Activo | Ubicacion de produccion | Requisito de recuperacion |
 |---|---|---|
-| `app` database | External production database | Database backup before migration |
-| `app` documents | `app_documents` named volume | Volume backup |
-| `app` static | `app_static` named volume | Replaceable through collectstatic |
-| `app` logs | `/var/log/local/mepram-omop-api/apps` host bind | Retain/rotate per institutional log policy |
-| `app` rendered settings | `/srv/containers/bind/mepram-omop-api/settings/` host bind | Protected configuration backup |
-| Apache logs | `/var/log/local/mepram-omop-api/apache` host bind | Retain/rotate per institutional log policy |
-| Rendered Apache configuration | `deployment/apache/` in the deployment checkout | Rebuildable; preserve reviewed source configuration |
-| Keycloak database | `keycloak_db_data` MySQL named volume | Database and identity backup |
-| Keycloak staged realm | `/srv/containers/bind/mepram-omop-api/keycloak/realm-import/` read-only host bind | Back up with deployment configuration; reproducible bootstrap input, not authoritative identity state |
+| Base de datos de `app` | MySQL externa `mepram_omop` | Backup consistente antes de migrar |
+| Documentos de `app` | Volumen `app_documents` | Exportar el volumen |
+| Static de `app` | Volumen `app_static` | Regenerable mediante `collectstatic` |
+| Logs de `app` | Bind `/var/log/local/mepram-omop-api/apps` | Retener/rotar segun politica institucional |
+| Settings renderizados | Bind `/srv/containers/bind/mepram-omop-api/settings/` | Backup de configuracion protegida |
+| Logs de Apache | Bind `/var/log/local/mepram-omop-api/apache` | Retener/rotar segun politica institucional |
+| Configuracion Apache | `deployment/apache/` en el checkout | Regenerable; conservar fuentes revisadas |
+| Base de datos Keycloak | Volumen MySQL `keycloak_db_data` | Backup autoritativo de identidades |
+| Realm staged de Keycloak | Bind read-only `/srv/containers/bind/mepram-omop-api/keycloak/realm-import/` | Backup de configuracion; no sustituye la base de datos |
 
 ## Preparar directorios del host
 
@@ -176,7 +183,7 @@ git rev-parse HEAD > "$BACKUP_DIR/git-revision.txt"
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
   images > "$BACKUP_DIR/images.txt"
 cp .env.production.file "$BACKUP_DIR/"
-cp <fichero-ajustes-protegido> "$BACKUP_DIR/"
+cp -a deployment/settings "$BACKUP_DIR/"
 chmod -R go-rwx "$BACKUP_DIR"
 ```
 
@@ -194,11 +201,15 @@ Localizar y exportar cada volumen no reconstruible declarado en la tabla:
 podman volume ls | grep 'mepram-omop-api'
 podman volume export <volumen-documents> > "$BACKUP_DIR/documents.tar"
 podman volume export <volumen-static> > "$BACKUP_DIR/static.tar"
+podman volume export <volumen-keycloak-db-data> \
+  > "$BACKUP_DIR/keycloak-db-data.tar"
 ```
 
 Exportar `documents` y `static` por cada servicio Django que los declare;
 omitir esos comandos para perfiles sin dichos volumenes. Aunque `static` puede
 regenerarse con `collectstatic`, conservarlo permite una restauracion exacta.
+El volumen `keycloak_db_data` es obligatorio en el backup: contiene el estado
+autoritativo de realms, usuarios, clientes y sesiones persistentes.
 
 Guardar tambien los bind mounts persistentes. Los logs se conservan segun su
 politica de retencion; la configuracion protegida debe incluirse siempre.
@@ -254,9 +265,10 @@ podman compose --env-file .env.production.file -f docker-compose.prod.yml logs -
 bash scripts/smoke_test.sh --engine podman
 ```
 
-Verificar tambien `<REVISAR: URL publica>`, autenticacion, correo, tareas
-programadas y un flujo real de lectura. Registrar estado, imagenes, revision y
-resultado de aceptacion.
+Verificar las URL publicas de la API y Keycloak configuradas en los settings,
+la autenticacion, el correo si se usa y un flujo real de lectura agregada. La
+aplicacion no declara actualmente tareas programadas. Registrar estado,
+imagenes, revision y resultado de aceptacion.
 
 ## Rollback
 
@@ -277,6 +289,8 @@ mysql --host=<db-host> --port=<db-port> --user=<db-user> --password \
   <db-name> < "$BACKUP_DIR/database.sql"
 podman volume import <volumen-documents> "$BACKUP_DIR/documents.tar"
 podman volume import <volumen-static> "$BACKUP_DIR/static.tar"
+podman volume import <volumen-keycloak-db-data> \
+  "$BACKUP_DIR/keycloak-db-data.tar"
 tar -C /srv/containers/bind -xzf "$BACKUP_DIR/bind-mounts.tar.gz"
 cp "$BACKUP_DIR/<fichero-ajustes-protegido>" <ruta-configuracion-protegida>/
 ```
@@ -387,6 +401,24 @@ ls -ldZ /var/log/local/mepram-omop-api/apache
 Si aparece `ModSecurity: Failed to open debug log file`, conservar el fichero
 para diagnostico, ejecutar `fix-permissions` y reiniciar. Si hay que sustituir
 el inode, moverlo primero a un backup en vez de borrarlo.
+
+### Servicio Keycloak
+
+```bash
+# Estado y errores de arranque, base de datos o importacion del realm.
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  logs --tail 200 keycloak keycloak_db
+
+# Comprobar el endpoint publico a traves del VirtualHost de Apache.
+KEYCLOAK_PUBLIC_URL='https://<dns-keycloak>'
+curl --fail --show-error \
+  "$KEYCLOAK_PUBLIC_URL/realms/mepram/.well-known/openid-configuration"
+```
+
+Un error `Permission denied` sobre `mepram-realm.json` se corrige con la accion
+`fix-permissions`; no se deben cambiar los ficheros fuente bajo
+`conf/keycloak/realm-import/`. El JSON staged solo inicializa realms nuevos y
+no sustituye el backup del volumen `keycloak_db_data`.
 
 ## Notas de permisos
 

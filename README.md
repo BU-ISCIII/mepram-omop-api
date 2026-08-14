@@ -1,11 +1,40 @@
 # MePRAM OMOP API
 
-Read-only Django REST API for aggregated MePRAM dashboard data generated from OMOP data.
+MePRAM OMOP API is a Django REST Framework service that exposes aggregated
+clinical dashboard data generated from an OMOP database. It provides cohort
+summaries, OMOP domains and concepts, fact and measurement aggregations, and
+stored report payloads. It intentionally does not expose patient-level records
+or genomic/isolate workflows such as sequence typing, carbapenemases, genomic
+alerts, or Microreact projects.
 
-> Application developers: replace this short description with the domain
-> overview, architecture image, user-facing documentation link, and support
-> channel. The installation sections below are rendered by the deployment
-> standard and are ready to use unless explicitly marked for review.
+## Infrastructure schema
+
+```mermaid
+flowchart LR
+    Browser[Browser / API client]
+    Apache["Apache reverse proxy<br/>application DNS + Keycloak DNS"]
+    App["Django / Gunicorn<br/>MePRAM OMOP API"]
+    KC[Keycloak]
+    OMOP[("External MySQL<br/>mepram_omop")]
+    KCDB[("Keycloak MySQL<br/>named volume")]
+    SMTP[SMTP relay]
+
+    Browser -->|HTTPS| Apache
+    Apache -->|application vhost| App
+    Apache -->|identity vhost| KC
+    App -->|aggregated queries| OMOP
+    App -->|JWKS via Compose DNS| KC
+    App -->|notifications| SMTP
+    KC --> KCDB
+```
+
+Apache is the public entry point. Tokens use Keycloak's public issuer URL,
+while Django retrieves signing keys through the internal `keycloak:8080`
+service address. Production application data lives in the external
+`mepram_omop` database; Keycloak identity state lives in its own persistent
+MySQL volume. See [LEAME.md](LEAME.md) for the production runbook.
+
+## Contents
 
 - [Get the code (required)](#get-the-code-required)
 - [Choose your path](#choose-your-path)
@@ -17,9 +46,8 @@ Read-only Django REST API for aggregated MePRAM dashboard data generated from OM
   - [Upgrade docker deployment](#upgrade-docker-deployment)
 - [Bare-metal deployment (Ubuntu/CentOS)](#bare-metal-deployment-ubuntucentos)
 - [Common operations (Docker + bare-metal)](#common-operations-docker--bare-metal)
-- [Final configuration steps](#final-configuration-steps)
 - [Developer notes](#developer-notes)
-- [Application documentation](#application-documentation)
+- [API reference](#api-reference)
 
 ## Get the code (required)
 
@@ -194,9 +222,11 @@ request limits, timeouts, health paths, and static/media routing together.
 
 #### Scheduled jobs
 
-The application developer must list every scheduler/worker, whether a failed
-job blocks a workflow, and how operators inspect and retry it. Do not add an
-untracked host cron job when the application profile owns scheduling.
+MePRAM OMOP API currently declares no Django `CRONJOBS`, worker service, or
+scheduled container. Dashboard data is imported explicitly through the
+installer or the `import_dashboard_sql` management command. Do not add an
+untracked host cron job; document and monitor any future scheduler as a
+first-class deployment service.
 
 ### Manage containers after installation
 
@@ -517,14 +547,6 @@ assigns only the staged copies to Keycloak as `1000:0` with mode `0640`. Include
 the staged directory in configuration backups; `keycloak_db_data` remains the
 authoritative identity backup.
 
-## Final configuration steps
-
-The application developer must document real post-install workflows here:
-initial administrator ownership, email delivery, identity-provider clients,
-storage credentials, scheduled jobs, and one representative user workflow.
-The generated baseline creates the initial Django administrator only when its
-profile settings explicitly request it.
-
 ## Developer notes
 
 ### Shared container installer library
@@ -568,7 +590,34 @@ bash scripts/smoke_test.sh --engine podman
 Application developers must extend the baseline smoke test with authenticated
 and domain-specific read workflows without removing the generated checks.
 
-## Application documentation
+## API reference
 
-Application developers: replace this paragraph with links to user,
-administrator, API, upgrade, and support documentation.
+All application endpoints are under `/v1` and operate on Django-managed
+dashboard tables populated from the approved aggregate SQL import. The main
+routes are:
+
+| Route | Purpose |
+|---|---|
+| `/health/` | Deployment-level application health |
+| `/v1/health` | Database and dashboard-table health with row counts |
+| `/v1/metadata` | Domains, event types, demographic filters and capabilities |
+| `/v1/capabilities` | Supported and intentionally unsupported API features |
+| `/v1/cohort/report` | Retrieve reports; superusers may store validated reports |
+| `/v1/cohort/summary` | Cohort totals and age/sex distributions |
+| `/v1/domains` | OMOP domain aggregates |
+| `/v1/concepts` | Search and paginate concepts |
+| `/v1/facts/concepts` | Fact/concept aggregates and stratifications |
+| `/v1/measurements/numeric` | Numeric measurement aggregates |
+| `/v1/measurements/categorical` | Categorical measurement aggregates |
+| `/v1/openapi/` | OpenAPI schema |
+| `/v1/swagger/` | Interactive API documentation |
+
+Common list parameters include `q`, `limit`, `offset`, `event_type`, and
+`stratification` (`none`, `age`, `sex`, or `age_sex`) where supported. The
+OpenAPI schema is the authoritative field-level reference. Report payloads are
+validated against
+[`core/api/services/report_payload_schema.json`](core/api/services/report_payload_schema.json).
+
+Operational procedures and rollback are documented in [LEAME.md](LEAME.md).
+Project issues and support requests should be routed through the repository's
+maintainer-approved support channel; do not include clinical data or secrets.
