@@ -165,14 +165,22 @@ prepare_application_host_sources() {
         mkdir -p "$apache_log_path"
     fi
 
-    # Keycloak imports realm JSON only when initializing an absent realm.
-    local keycloak_import_path
+    # Keep repository-owned realm JSON immutable. Stage it into the deployment
+    # bind tree before Compose validates and starts the Keycloak container.
+    local keycloak_realm_source_path keycloak_import_path realm_source realm_target
+    keycloak_realm_source_path="${KEYCLOAK_REALM_SOURCE_PATH:?KEYCLOAK_REALM_SOURCE_PATH is required}"
     keycloak_import_path="${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required}"
-    mkdir -p "$keycloak_import_path"
-    compgen -G "$keycloak_import_path/*.json" >/dev/null || {
-        echo "Keycloak realm import JSON not found in $keycloak_import_path" >&2
+    [[ "$keycloak_realm_source_path" == /* ]] || keycloak_realm_source_path="$script_dir/$keycloak_realm_source_path"
+    [[ "$keycloak_import_path" == /* ]] || keycloak_import_path="$script_dir/$keycloak_import_path"
+    compgen -G "$keycloak_realm_source_path/*.json" >/dev/null || {
+        echo "Keycloak realm source JSON not found in $keycloak_realm_source_path" >&2
         return 1
     }
+    mkdir -p "$keycloak_import_path"
+    for realm_source in "$keycloak_realm_source_path"/*.json; do
+        realm_target="$keycloak_import_path/$(basename "$realm_source")"
+        copy_with_podman_fallback "$realm_source" "$realm_target" || return 1
+    done
 }
 
 # Keep one independently reviewable host permission specification per
@@ -203,6 +211,7 @@ prepare_host_bind_source_permissions() {
     apply_host_permission_spec "${apache_host_bind_permission_spec[@]}"
     local keycloak_import_path
     keycloak_import_path="${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required}"
+    [[ "$keycloak_import_path" == /* ]] || keycloak_import_path="$script_dir/$keycloak_import_path"
     local -a keycloak_host_bind_permission_spec=("$keycloak_import_path|-|0755")
     for realm_file in "$keycloak_import_path"/*.json; do
         keycloak_host_bind_permission_spec+=("$realm_file|1000:0|0640")
