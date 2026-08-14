@@ -205,7 +205,7 @@ prepare_host_bind_source_permissions() {
     keycloak_import_path="${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required}"
     local -a keycloak_host_bind_permission_spec=("$keycloak_import_path|-|0755")
     for realm_file in "$keycloak_import_path"/*.json; do
-        keycloak_host_bind_permission_spec+=("$realm_file|-|0640")
+        keycloak_host_bind_permission_spec+=("$realm_file|1000:0|0640")
     done
     apply_host_permission_spec "${keycloak_host_bind_permission_spec[@]}"
 }
