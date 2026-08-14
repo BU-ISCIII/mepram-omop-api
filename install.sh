@@ -190,16 +190,20 @@ install_application_system_packages() {
         apt-get update
         apt-get install -y --no-install-recommends \
             build-essential pkg-config python3-dev \
-            default-libmysqlclient-dev passwd
+            default-libmysqlclient-dev passwd tzdata
     elif command -v microdnf >/dev/null 2>&1; then
         microdnf install -y \
             gcc pkgconf-pkg-config python3.12-devel \
             mariadb-connector-c-devel shadow-utils
+        # UBI minimal records tzdata as installed while excluding its zoneinfo
+        # payload. Reinstall it so Django can resolve regional TIME_ZONE values.
+        microdnf reinstall -y tzdata
         microdnf clean all
     elif command -v dnf >/dev/null 2>&1; then
         dnf install -y \
             gcc pkgconf-pkg-config python3.12-devel \
             mariadb-connector-c-devel shadow-utils
+        dnf reinstall -y tzdata
     else
         die "Unsupported package manager for system dependency installation"
     fi
