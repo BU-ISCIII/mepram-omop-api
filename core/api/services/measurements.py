@@ -1,6 +1,5 @@
 from core.api.services import dashboard_models, db
 
-
 STRATIFICATION_COLUMNS = {
     "none": [],
     "age": ["age_group"],
@@ -107,7 +106,11 @@ def _list_measurements(
         *STRATIFICATION_COLUMNS[stratification],
         *metric_columns,
     ]
-    order_columns = ["concept_name", "event_type", *STRATIFICATION_COLUMNS[stratification]]
+    order_columns = [
+        "concept_name",
+        "event_type",
+        *STRATIFICATION_COLUMNS[stratification],
+    ]
 
     return db.rows(
         queryset.values(*columns).order_by(*order_columns)[offset : offset + limit]

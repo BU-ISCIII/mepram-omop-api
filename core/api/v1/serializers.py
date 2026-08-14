@@ -11,7 +11,9 @@ class DomainQuerySerializer(serializers.Serializer):
 
 class DomainConceptQuerySerializer(serializers.Serializer):
     q = serializers.CharField(required=False, allow_blank=False)
-    limit = serializers.IntegerField(required=False, min_value=1, max_value=1000, default=100)
+    limit = serializers.IntegerField(
+        required=False, min_value=1, max_value=1000, default=100
+    )
     offset = serializers.IntegerField(required=False, min_value=0, default=0)
 
 
@@ -19,7 +21,9 @@ class ConceptQuerySerializer(serializers.Serializer):
     q = serializers.CharField(required=False, allow_blank=False)
     domain_id = serializers.CharField(required=False, allow_blank=False)
     vocabulary_id = serializers.CharField(required=False, allow_blank=False)
-    limit = serializers.IntegerField(required=False, min_value=1, max_value=1000, default=100)
+    limit = serializers.IntegerField(
+        required=False, min_value=1, max_value=1000, default=100
+    )
     offset = serializers.IntegerField(required=False, min_value=0, default=0)
 
 
@@ -36,7 +40,9 @@ class MeasurementQuerySerializer(serializers.Serializer):
         choices=["none", "age", "sex", "age_sex"],
         default="none",
     )
-    limit = serializers.IntegerField(required=False, min_value=1, max_value=1000, default=100)
+    limit = serializers.IntegerField(
+        required=False, min_value=1, max_value=1000, default=100
+    )
     offset = serializers.IntegerField(required=False, min_value=0, default=0)
 
 
@@ -49,7 +55,9 @@ class FactConceptQuerySerializer(serializers.Serializer):
         choices=["none", "age", "sex", "age_sex"],
         default="none",
     )
-    limit = serializers.IntegerField(required=False, min_value=1, max_value=1000, default=100)
+    limit = serializers.IntegerField(
+        required=False, min_value=1, max_value=1000, default=100
+    )
     offset = serializers.IntegerField(required=False, min_value=0, default=0)
 
 
@@ -101,11 +109,15 @@ class MetadataResponseSerializer(serializers.Serializer):
     total_patients = serializers.IntegerField()
     capabilities = serializers.DictField()
 
+
 class ReportQuerySerializer(serializers.Serializer):
-    limit = serializers.IntegerField(required=False, min_value=1, max_value=1000, default=20)
+    limit = serializers.IntegerField(
+        required=False, min_value=1, max_value=1000, default=20
+    )
     start_date = serializers.DateField(required=False, default="1980-01-01")
     end_date = serializers.DateField(required=False, default="3000-01-01")
     summary_name = serializers.CharField(required=False, allow_blank=True)
+
 
 class PostReportQuerySerializer(serializers.Serializer):
     summary_name = serializers.CharField()

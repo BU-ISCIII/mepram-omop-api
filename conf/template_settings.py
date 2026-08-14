@@ -19,7 +19,12 @@ def env_bool(name, default=False):
 
 def env_list(name, default=""):
     """Read a comma-separated environment variable as a clean list."""
-    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+    return [
+        item.strip()
+        for item in os.environ.get(name, default).split(",")
+        if item.strip()
+    ]
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -31,9 +36,7 @@ ALLOWED_HOSTS = [
     host.strip() for host in "djangoallowedhosts".split(",") if host.strip()
 ]
 CSRF_TRUSTED_ORIGINS = [
-    origin.strip()
-    for origin in "djangocsrftrustedorigins".split(",")
-    if origin.strip()
+    origin.strip() for origin in "djangocsrftrustedorigins".split(",") if origin.strip()
 ]
 
 # Add every local and third-party Django application used by the project.
@@ -131,9 +134,7 @@ MEPRAM_DOCS_REQUIRE_STAFF = env_bool("API_DOCS_REQUIRE_STAFF", True)
 MEPRAM_KEYCLOAK_ISSUER = os.environ.get("OIDC_ISSUER", "")
 MEPRAM_KEYCLOAK_JWKS_URL = os.environ.get("OIDC_JWKS_URL", "")
 MEPRAM_KEYCLOAK_AUDIENCE = os.environ.get("OIDC_AUDIENCE", "mepram-api")
-MEPRAM_KEYCLOAK_CLIENT_ID = os.environ.get(
-    "OIDC_CLIENT_ID", "pathocore-web"
-)
+MEPRAM_KEYCLOAK_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "pathocore-web")
 MEPRAM_KEYCLOAK_JWKS_CACHE_TTL_SECONDS = int(
     os.environ.get("OIDC_JWKS_CACHE_TTL_SECONDS", "300")
 )

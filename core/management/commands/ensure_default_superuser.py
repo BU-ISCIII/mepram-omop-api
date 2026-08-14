@@ -37,4 +37,6 @@ class Command(BaseCommand):
         user.save()
 
         action = "Created" if created else "Updated"
-        self.stdout.write(self.style.SUCCESS(f"{action} default superuser '{username}'"))
+        self.stdout.write(
+            self.style.SUCCESS(f"{action} default superuser '{username}'")
+        )

@@ -1,6 +1,5 @@
 from core.api.services import dashboard_models, db
 
-
 STRATIFICATION_COLUMNS = {
     "none": [],
     "age": ["age_group"],

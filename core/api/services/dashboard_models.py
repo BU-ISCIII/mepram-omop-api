@@ -1,6 +1,5 @@
 from core import models
 
-
 FACT_CONCEPT_MODELS = {
     "none": models.FactConcept,
     "age": models.FactConceptByAge,
@@ -39,5 +38,5 @@ DASHBOARD_MODELS = [
     models.FactMeasurementCategoricalByAge,
     models.FactMeasurementCategoricalBySex,
     models.FactMeasurementCategoricalByAgeSex,
-    models.ReportCache
+    models.ReportCache,
 ]

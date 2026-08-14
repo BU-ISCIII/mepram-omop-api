@@ -1,7 +1,11 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
 from rest_framework.permissions import AllowAny
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
@@ -36,7 +40,7 @@ def _validated(serializer_class, query_params):
 @extend_schema(
     tags=[TAG_OPERATION],
     summary="Health check",
-    description='Checks database connectivity and reports whether every Django-managed dashboard table exists. The response includes one entry per table with its existence flag and current row count, so it can be used to verify that migrations and the dashboard import completed successfully.',
+    description="Checks database connectivity and reports whether every Django-managed dashboard table exists. The response includes one entry per table with its existence flag and current row count, so it can be used to verify that migrations and the dashboard import completed successfully.",
     responses={200: serializers.HealthResponseSerializer},
     auth=[],
 )
@@ -50,7 +54,7 @@ def health_view(request):
 @extend_schema(
     tags=[TAG_DASHBOARD],
     summary="Dashboard metadata",
-    description='Returns global metadata needed to build filters and navigation: loaded schema name, OMOP domains, available event types, age groups, genders, vocabularies, total patient count and capability flags.',
+    description="Returns global metadata needed to build filters and navigation: loaded schema name, OMOP domains, available event types, age groups, genders, vocabularies, total patient count and capability flags.",
     responses={200: serializers.MetadataResponseSerializer},
 )
 @api_view(["GET"])
@@ -61,7 +65,7 @@ def metadata_view(request):
 @extend_schema(
     tags=[TAG_DASHBOARD],
     summary="Dashboard capabilities",
-    description='Returns boolean feature flags describing the current scope of the API. Clinical aggregates and stratified measurements are supported; isolate explorer and genomic alert workflows are explicitly marked unsupported.',
+    description="Returns boolean feature flags describing the current scope of the API. Clinical aggregates and stratified measurements are supported; isolate explorer and genomic alert workflows are explicitly marked unsupported.",
     responses={200: dict},
 )
 @api_view(["GET"])
@@ -73,13 +77,27 @@ def capabilities_view(request):
     methods=["GET"],
     tags=[TAG_DASHBOARD],
     summary="Retrieve reports",
-    description='Retrieves available reports from the cohorts',
+    description="Retrieves available reports from the cohorts",
     responses={200: dict, 403: serializers.ErrorSerializer},
     parameters=[
         OpenApiParameter("limit", int, required=False, default=20),
-        OpenApiParameter("start_date", OpenApiTypes.DATE, required=False, default="1980-01-01", description="Earliest start date of report submission until today, in YYYY-MM-DD format. If used alongside end_date, it will return all the reports in a date range."),
-        OpenApiParameter("end_date", OpenApiTypes.DATE, required=False, default="3000-01-01", description="Latest end date of report submission, in YYYY-MM-DD format. If used alongside start_date, it will return all the reports in a date range."),
-        OpenApiParameter("summary_name", str, required=False, description="Name of the report."),
+        OpenApiParameter(
+            "start_date",
+            OpenApiTypes.DATE,
+            required=False,
+            default="1980-01-01",
+            description="Earliest start date of report submission until today, in YYYY-MM-DD format. If used alongside end_date, it will return all the reports in a date range.",
+        ),
+        OpenApiParameter(
+            "end_date",
+            OpenApiTypes.DATE,
+            required=False,
+            default="3000-01-01",
+            description="Latest end date of report submission, in YYYY-MM-DD format. If used alongside start_date, it will return all the reports in a date range.",
+        ),
+        OpenApiParameter(
+            "summary_name", str, required=False, description="Name of the report."
+        ),
     ],
 )
 @extend_schema(
@@ -89,7 +107,11 @@ def capabilities_view(request):
     description="Stores a report. Only superusers can save reports.",
     auth=[{"cookieAuth": []}, {"bearerAuth": []}],
     request=serializers.PostReportQuerySerializer,
-    responses={201: dict, 400: serializers.ErrorSerializer, 403: serializers.ErrorSerializer},
+    responses={
+        201: dict,
+        400: serializers.ErrorSerializer,
+        403: serializers.ErrorSerializer,
+    },
 )
 @api_view(["GET", "POST"])
 @authentication_classes([SessionAuthentication])
@@ -105,7 +127,9 @@ def full_report_view(request):
                 {"detail": f"Error saving report: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return Response({"detail": "Report saved successfully."}, status=status.HTTP_201_CREATED)   
+        return Response(
+            {"detail": "Report saved successfully."}, status=status.HTTP_201_CREATED
+        )
     params = _validated(serializers.ReportQuerySerializer, request.query_params)
     return Response(reports.report(params), status=status.HTTP_200_OK)
 
@@ -113,7 +137,7 @@ def full_report_view(request):
 @extend_schema(
     tags=[TAG_DASHBOARD],
     summary="Cohort summary",
-    description='Returns the dashboard cohort size and patient distributions by age group, by sex and by the combined age+sex stratification. Counts are based on the distinct patient dimension imported from dashboard.sql.',
+    description="Returns the dashboard cohort size and patient distributions by age group, by sex and by the combined age+sex stratification. Counts are based on the distinct patient dimension imported from dashboard.sql.",
     responses={200: dict},
 )
 @api_view(["GET"])
@@ -124,7 +148,7 @@ def cohort_summary_view(request):
 @extend_schema(
     tags=[TAG_DASHBOARD],
     summary="List dashboard domains",
-    description='Lists OMOP domains available in the dashboard.',
+    description="Lists OMOP domains available in the dashboard.",
     responses={200: serializers.DomainSerializer(many=True)},
 )
 @api_view(["GET"])
@@ -135,7 +159,7 @@ def domains_view(request):
 @extend_schema(
     tags=[TAG_DASHBOARD],
     summary="List concepts for one domain",
-    description='Lists concepts that belong to one OMOP domain, including the number of distinct patients with at least one event for each concept and the percentage over the whole cohort. Supports text search and pagination.',
+    description="Lists concepts that belong to one OMOP domain, including the number of distinct patients with at least one event for each concept and the percentage over the whole cohort. Supports text search and pagination.",
     parameters=[
         OpenApiParameter("q", str, required=False),
         OpenApiParameter("limit", int, required=False),
@@ -159,7 +183,7 @@ def domain_concepts_view(request, domain_id):
 @extend_schema(
     tags=[TAG_CONCEPTS],
     summary="Search concepts",
-    description='Searches the imported OMOP concept catalogue. The response contains concept identifiers, display names, OMOP domain, vocabulary and source concept code. This endpoint does not include event counts.',
+    description="Searches the imported OMOP concept catalogue. The response contains concept identifiers, display names, OMOP domain, vocabulary and source concept code. This endpoint does not include event counts.",
     parameters=[
         OpenApiParameter("q", str, required=False),
         OpenApiParameter("domain_id", str, required=False),
@@ -185,21 +209,23 @@ def concepts_view(request):
 @extend_schema(
     tags=[TAG_CONCEPTS],
     summary="Get concept",
-    description='Returns catalogue metadata for one concept_id. Use the /detail endpoint when aggregate counts, stratifications or measurement values are needed.',
+    description="Returns catalogue metadata for one concept_id. Use the /detail endpoint when aggregate counts, stratifications or measurement values are needed.",
     responses={200: serializers.ConceptSerializer, 404: serializers.ErrorSerializer},
 )
 @api_view(["GET"])
 def concept_detail_view(request, concept_id):
     row = concepts.get_concept(concept_id)
     if row is None:
-        return Response({"error": "Concept not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"error": "Concept not found"}, status=status.HTTP_404_NOT_FOUND
+        )
     return Response(row, status=status.HTTP_200_OK)
 
 
 @extend_schema(
     tags=[TAG_CONCEPTS],
     summary="Get concept dashboard detail",
-    description='Returns a dashboard-oriented detail view for one concept: concept metadata, overall aggregate counts, age/sex stratifications and any numeric or categorical measurement summaries associated with the same concept_id. Optionally restricts all aggregate sections by event_type.',
+    description="Returns a dashboard-oriented detail view for one concept: concept metadata, overall aggregate counts, age/sex stratifications and any numeric or categorical measurement summaries associated with the same concept_id. Optionally restricts all aggregate sections by event_type.",
     parameters=[OpenApiParameter("event_type", str, required=False)],
     responses={200: dict, 404: serializers.ErrorSerializer},
 )
@@ -208,7 +234,9 @@ def concept_dashboard_detail_view(request, concept_id):
     params = _validated(serializers.ConceptDetailQuerySerializer, request.query_params)
     payload = concepts.concept_detail(concept_id, event_type=params.get("event_type"))
     if payload is None:
-        return Response({"error": "Concept not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"error": "Concept not found"}, status=status.HTTP_404_NOT_FOUND
+        )
     return Response(payload, status=status.HTTP_200_OK)
 
 
@@ -225,7 +253,7 @@ FACT_CONCEPT_PARAMETERS = [
 @extend_schema(
     tags=[TAG_FACTS],
     summary="List concept aggregates",
-    description='Lists precomputed concept-level aggregates. With stratification=none it returns record counts, patient counts and percentages. With age, sex or age_sex it returns patient counts and percentages within each stratum and within the concept. Supports text, domain, event type and pagination filters.',
+    description="Lists precomputed concept-level aggregates. With stratification=none it returns record counts, patient counts and percentages. With age, sex or age_sex it returns patient counts and percentages within each stratum and within the concept. Supports text, domain, event type and pagination filters.",
     parameters=FACT_CONCEPT_PARAMETERS,
     responses={200: dict},
 )
@@ -258,7 +286,7 @@ MEASUREMENT_PARAMETERS = [
 @extend_schema(
     tags=[TAG_MEASUREMENTS],
     summary="List numeric measurement aggregates",
-    description='Lists numeric measurement summaries for measurement-like concepts. Each row contains unit metadata, number of records/patients and descriptive statistics: mean, standard deviation, min, quartiles, median and max. Optional stratification adds age_group and/or gender columns.',
+    description="Lists numeric measurement summaries for measurement-like concepts. Each row contains unit metadata, number of records/patients and descriptive statistics: mean, standard deviation, min, quartiles, median and max. Optional stratification adds age_group and/or gender columns.",
     parameters=MEASUREMENT_PARAMETERS,
     responses={200: dict},
 )
@@ -281,7 +309,7 @@ def numeric_measurements_view(request):
 @extend_schema(
     tags=[TAG_MEASUREMENTS],
     summary="List categorical measurement aggregates",
-    description='Lists categorical measurement summaries for concepts represented by value_as_concept_id. The response includes category labels, record and patient counts and percentages. Optional stratification adds age_group and/or gender plus stratum-specific percentages.',
+    description="Lists categorical measurement summaries for concepts represented by value_as_concept_id. The response includes category labels, record and patient counts and percentages. Optional stratification adds age_group and/or gender plus stratum-specific percentages.",
     parameters=MEASUREMENT_PARAMETERS,
     responses={200: dict},
 )

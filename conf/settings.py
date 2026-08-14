@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 
+
 def _rate_env(name, default):
     return os.environ.get(name, default).strip()
 
@@ -22,9 +23,7 @@ DEBUG = os.environ.get("MEPRAM_API_DEBUG", "true").lower() in {
     "yes",
     "on",
 }
-ALLOWED_HOSTS = _csv_env(
-    "MEPRAM_API_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0"
-)
+ALLOWED_HOSTS = _csv_env("MEPRAM_API_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0")
 CSRF_TRUSTED_ORIGINS = _csv_env("MEPRAM_CSRF_TRUSTED_ORIGINS")
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # Trust this header only behind a controlled reverse proxy that overwrites it
@@ -134,14 +133,14 @@ REST_FRAMEWORK = {
     ),
     "UNAUTHENTICATED_USER": None,
     "UNAUTHENTICATED_TOKEN": None,
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
     ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': _rate_env('PUBLIC_API_THROTTLE_RATE', '500/hour'),
-        'user': _rate_env('PUBLIC_API_THROTTLE_RATE', '500/hour')
-    }
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": _rate_env("PUBLIC_API_THROTTLE_RATE", "500/hour"),
+        "user": _rate_env("PUBLIC_API_THROTTLE_RATE", "500/hour"),
+    },
 }
 
 SPECTACULAR_SETTINGS = {

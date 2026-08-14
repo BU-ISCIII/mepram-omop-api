@@ -8,7 +8,6 @@ from core.api.services.dashboard_models import DASHBOARD_MODELS
 
 import json
 
-
 COPY_RE = re.compile(r"^COPY dashboard\.([^\s(]+) \(([^)]+)\) FROM stdin;$")
 TABLE_MODELS = {model._meta.db_table: model for model in DASHBOARD_MODELS}
 
@@ -95,10 +94,14 @@ class Command(BaseCommand):
 
                 columns = [column.strip() for column in match.group(2).split(",")]
                 model_fields = {field.name for field in model._meta.fields}
-                import_columns = [column for column in columns if column in model_fields]
+                import_columns = [
+                    column for column in columns if column in model_fields
+                ]
                 if len(import_columns) != len(columns):
                     unknown = sorted(set(columns) - model_fields)
-                    raise CommandError(f"Unknown columns for {table_name}: {', '.join(unknown)}")
+                    raise CommandError(
+                        f"Unknown columns for {table_name}: {', '.join(unknown)}"
+                    )
 
                 counts[table_name] = self._load_copy_rows(
                     handle, model, import_columns, batch_size

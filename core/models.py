@@ -65,7 +65,9 @@ class FactConceptBase(DashboardModel):
 
 class FactConcept(FactConceptBase):
     record_count = models.IntegerField(null=True)
-    record_pct_overall = models.DecimalField(max_digits=30, decimal_places=15, null=True)
+    record_pct_overall = models.DecimalField(
+        max_digits=30, decimal_places=15, null=True
+    )
     patient_pct = models.DecimalField(max_digits=30, decimal_places=15, null=True)
 
     class Meta(FactConceptBase.Meta):
@@ -75,7 +77,9 @@ class FactConcept(FactConceptBase):
 class FactConceptByAge(FactConceptBase):
     age_group = models.CharField(max_length=255)
     patient_pct_group = models.DecimalField(max_digits=30, decimal_places=15, null=True)
-    patient_pct_concept = models.DecimalField(max_digits=30, decimal_places=15, null=True)
+    patient_pct_concept = models.DecimalField(
+        max_digits=30, decimal_places=15, null=True
+    )
 
     class Meta(FactConceptBase.Meta):
         db_table = "fact_concept_by_age"
@@ -84,7 +88,9 @@ class FactConceptByAge(FactConceptBase):
 class FactConceptBySex(FactConceptBase):
     gender = models.CharField(max_length=255)
     patient_pct_group = models.DecimalField(max_digits=30, decimal_places=15, null=True)
-    patient_pct_concept = models.DecimalField(max_digits=30, decimal_places=15, null=True)
+    patient_pct_concept = models.DecimalField(
+        max_digits=30, decimal_places=15, null=True
+    )
 
     class Meta(FactConceptBase.Meta):
         db_table = "fact_concept_by_sex"
@@ -94,7 +100,9 @@ class FactConceptByAgeSex(FactConceptBase):
     age_group = models.CharField(max_length=255)
     gender = models.CharField(max_length=255)
     patient_pct_group = models.DecimalField(max_digits=30, decimal_places=15, null=True)
-    patient_pct_concept = models.DecimalField(max_digits=30, decimal_places=15, null=True)
+    patient_pct_concept = models.DecimalField(
+        max_digits=30, decimal_places=15, null=True
+    )
 
     class Meta(FactConceptBase.Meta):
         db_table = "fact_concept_by_age_sex"
@@ -174,7 +182,9 @@ class FactMeasurementCategorical(CategoricalMeasurementBase):
 class FactMeasurementCategoricalByAge(CategoricalMeasurementBase):
     age_group = models.CharField(max_length=255)
     patient_pct_group = models.DecimalField(max_digits=30, decimal_places=15, null=True)
-    patient_pct_concept = models.DecimalField(max_digits=30, decimal_places=15, null=True)
+    patient_pct_concept = models.DecimalField(
+        max_digits=30, decimal_places=15, null=True
+    )
 
     class Meta(CategoricalMeasurementBase.Meta):
         db_table = "fact_measurement_categorical_by_age"
@@ -183,7 +193,9 @@ class FactMeasurementCategoricalByAge(CategoricalMeasurementBase):
 class FactMeasurementCategoricalBySex(CategoricalMeasurementBase):
     gender = models.CharField(max_length=255)
     patient_pct_group = models.DecimalField(max_digits=30, decimal_places=15, null=True)
-    patient_pct_concept = models.DecimalField(max_digits=30, decimal_places=15, null=True)
+    patient_pct_concept = models.DecimalField(
+        max_digits=30, decimal_places=15, null=True
+    )
 
     class Meta(CategoricalMeasurementBase.Meta):
         db_table = "fact_measurement_categorical_by_sex"
@@ -193,10 +205,13 @@ class FactMeasurementCategoricalByAgeSex(CategoricalMeasurementBase):
     age_group = models.CharField(max_length=255)
     gender = models.CharField(max_length=255)
     patient_pct_group = models.DecimalField(max_digits=30, decimal_places=15, null=True)
-    patient_pct_concept = models.DecimalField(max_digits=30, decimal_places=15, null=True)
+    patient_pct_concept = models.DecimalField(
+        max_digits=30, decimal_places=15, null=True
+    )
 
     class Meta(CategoricalMeasurementBase.Meta):
         db_table = "fact_measurement_categorical_by_age_sex"
+
 
 class ReportCache(DashboardModel):
     summary_name = models.CharField(max_length=255, null=True)
