@@ -15,7 +15,7 @@ MIGRATION_MODULES='core'
 APP_UID='1212'
 APP_GID='1212'
 APP_SHELL='/bin/bash'
-APP_PORT='8001'
+APP_PORT='8202'
 
 ### Disposable persistence paths
 HOST_LOG_PATH='/tmp/mepram-omop-api/logs'
@@ -34,7 +34,7 @@ DB_ROOT_PASSWORD='root'
 DJANGO_DEBUG='true'
 DJANGO_SECRET_KEY='test-only-change-me'
 DJANGO_ALLOWED_HOSTS='*'
-DJANGO_CSRF_TRUSTED_ORIGINS='http://localhost:8001,http://127.0.0.1:8001'
+DJANGO_CSRF_TRUSTED_ORIGINS='http://localhost:8202,http://127.0.0.1:8202'
 DB_CONN_MAX_AGE='60'
 
 ### MePRAM API behavior
@@ -49,8 +49,8 @@ OIDC_AUTH_REQUIRED='false'
 # Keep interactive API documentation restricted when authentication is later
 # enabled for an integration test.
 API_DOCS_REQUIRE_STAFF='true'
-OIDC_ISSUER='http://127.0.0.1:8081/realms/mepram'
-OIDC_JWKS_URL='http://127.0.0.1:8081/realms/mepram/protocol/openid-connect/certs'
+OIDC_ISSUER='http://127.0.0.1:8281/realms/mepram'
+OIDC_JWKS_URL='http://127.0.0.1:8281/realms/mepram/protocol/openid-connect/certs'
 OIDC_AUDIENCE='mepram-api'
 OIDC_CLIENT_ID='pathocore-web'
 OIDC_JWKS_CACHE_TTL_SECONDS='300'
