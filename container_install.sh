@@ -191,11 +191,10 @@ prepare_application_host_sources() {
     done
 }
 
-# Keep one independently reviewable host permission specification per
-# application and per selected add-on. Empty add-on specs are intentional until
-# that add-on declares writable bind sources.
+# Apply the same permission workflow in test and production. Keep one
+# independently reviewable specification per application and selected add-on;
+# the shared helper skips paths that are not used by the active mode.
 prepare_host_bind_source_permissions() {
-    [ "$mode" = production ] || return 0
     local log_path settings_path uid gid
     log_path="$(service_environment_value app HOST_LOG_PATH)"
     settings_path="$(service_environment_value app DJANGO_SETTINGS_PATH)"
