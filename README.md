@@ -409,6 +409,10 @@ mysqldump --single-transaction --routines --triggers \
 
 podman volume ls | grep 'mepram-omop-api'
 podman volume export "$DOCUMENTS_VOLUME" > "$BACKUP_DIR/documents.tar"
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  exec -T keycloak_db sh -c \
+  'exec mysqldump --single-transaction --routines --triggers -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' \
+  > "$BACKUP_DIR/keycloak-database.sql"
 tar -C /srv/containers/bind -czf "$BACKUP_DIR/bind-mounts.tar.gz" mepram-omop-api
 sha256sum "$BACKUP_DIR"/* > "$BACKUP_DIR/SHA256SUMS"
 ```
@@ -461,6 +465,14 @@ install -m 0600 "$BACKUP_DIR/apache_production_settings.txt" deployment/settings
 install -m 0600 "$BACKUP_DIR/keycloak_production_settings.txt" deployment/settings/keycloak_production_settings.txt
 bash container_install.sh --action fix-permissions --engine podman \
   --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+podman compose --env-file .env.production.file -f docker-compose.prod.yml up -d keycloak_db
+until podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  exec -T keycloak_db sh -c \
+  'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'; do sleep 2; done
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  exec -T keycloak_db sh -c \
+  'exec mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' \
+  < "$BACKUP_DIR/keycloak-database.sql"
 ```
 
 Then deploy the revision recorded in `git-revision.txt`, start the deployment,
