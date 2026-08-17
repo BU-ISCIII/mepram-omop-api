@@ -97,21 +97,45 @@ Persistencia declarada por el despliegue:
 
 ## Preparar directorios del host
 
-Crear la estructura comun antes de la primera instalacion. Sustituir
-`<usuario-podman>` por la cuenta que ejecutara siempre Podman y el instalador.
+Crear primero la estructura comun. Sustituir `<usuario-podman>` por la cuenta
+que ejecutara siempre Podman y el instalador; normalmente es la cuenta de la
+sesion actual.
 
 ```bash
 sudo mkdir -p /opt/containers_apps/mepram-omop-api
 sudo mkdir -p /srv/containers/backup/mepram-omop-api
-sudo mkdir -p /srv/containers/bind/mepram-omop-api/settings
-sudo mkdir -p /var/log/local/mepram-omop-api/apps
-sudo mkdir -p /var/log/local/mepram-omop-api/apache
 sudo chown -R <usuario-podman>:<usuario-podman> \
   /opt/containers_apps/mepram-omop-api \
-  /srv/containers/backup/mepram-omop-api \
-  /srv/containers/bind/mepram-omop-api \
-  /var/log/local/mepram-omop-api
+  /srv/containers/backup/mepram-omop-api
 ```
+
+Despues de copiar y completar todos los ficheros protegidos en
+`deployment/settings/`, crear los binds exactamente donde indica cada servicio:
+
+```bash
+PODMAN_USER='<usuario-podman>'
+(
+  source deployment/settings/app_production_settings.txt
+  : "${HOST_LOG_PATH:?HOST_LOG_PATH is required for app}"
+  : "${DJANGO_SETTINGS_PATH:?DJANGO_SETTINGS_PATH is required for app}"
+  sudo install -d -o "$PODMAN_USER" -g "$PODMAN_USER" \
+    "$HOST_LOG_PATH" "$(dirname "$DJANGO_SETTINGS_PATH")"
+)
+(
+  source deployment/settings/apache_production_settings.txt
+  : "${APACHE_LOG_PATH:?APACHE_LOG_PATH is required for apache}"
+  sudo install -d -o "$PODMAN_USER" -g "$PODMAN_USER" "$APACHE_LOG_PATH"
+)
+(
+  source deployment/settings/keycloak_production_settings.txt
+  : "${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required for keycloak}"
+  sudo install -d -o "$PODMAN_USER" -g "$PODMAN_USER" "$KEYCLOAK_IMPORT_PATH"
+)
+```
+
+Los ficheros se cargan como el usuario actual dentro de subshells; solo
+`install -d` usa privilegios. Revisar antes las rutas y no ejecutar los
+ficheros completos con `sudo`.
 
 El instalador crea automaticamente
 `/srv/containers/bind/mepram-omop-api/keycloak/realm-import` porque el usuario
