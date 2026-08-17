@@ -256,13 +256,20 @@ de restauracion.
 
 Primera instalacion:
 
+El fichero `../mepram-omop-dashboard.sql` contiene los bloques de datos
+agregados que `import_dashboard_sql` carga despues de crear el esquema mediante
+las migraciones. Proporcionarlo explicitamente solo en la primera instalacion:
+
 ```bash
 bash container_install.sh --action install --engine podman \
   --git_revision <revision-aprobada> \
-  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+  --demo_data ../mepram-omop-dashboard.sql \
+  --install_conf_map app,deployment/settings/app_production_settings.txt \
+  --install_conf_map apache,deployment/settings/apache_production_settings.txt \
+  --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
-Actualizacion:
+Actualizacion (sin `--demo_data`, para no truncar ni recargar los agregados):
 
 ```bash
 bash container_install.sh --action upgrade --engine podman \
