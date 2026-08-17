@@ -169,6 +169,10 @@ The same explicit `--demo_data <path>` input may be used on a fresh production
 install when an application needs a controlled seed import. Production never
 selects or loads demo data by default, and upgrades never reload it.
 
+MePRAM has no default demo-data download URL. A fresh test install therefore
+requires `--demo_data <path>` unless demo loading is explicitly disabled with
+`--skip_demo_data` or `--skip_test_data`.
+
 For an automatic first administrator, set `CREATE_INITIAL_SUPERUSER=true` and
 the `DJANGO_SUPERUSER_*` values in the selected test settings before install.
 An existing account is never reset. Open the loopback URL using `APP_PORT` from

@@ -299,8 +299,8 @@ load_test_deployment_data() {
         return 0
     fi
     if [ -z "$demo_data" ]; then
-        echo "No MePRAM dashboard demo data was provided; skipping import"
-        return 0
+        die "MePRAM has no default demo-data download URL; provide " \
+            "--demo_data or explicitly use --skip_demo_data"
     fi
     [ -f "$demo_data" ] || die "Dashboard demo-data SQL file not found: $demo_data"
 
