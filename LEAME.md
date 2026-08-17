@@ -1,9 +1,9 @@
 # Actualizacion de MePRAM OMOP API con Podman rootless
 
 Esta guia es la lista de ejecucion para instalar, actualizar y recuperar el
-despliegue de produccion. Los comandos generados son reutilizables; antes de la
-aprobacion, el responsable de la aplicacion debe completar los campos marcados
-`<REVISAR>` con valores o referencias institucionales verificadas.
+despliegue de produccion. Los comandos generados son reutilizables. Antes de la
+aprobacion, el responsable debe registrar las entradas de despliegue indicadas
+abajo con valores o referencias institucionales verificadas.
 
 MePRAM OMOP API publica agregados clinicos generados desde OMOP mediante
 Django. Apache sirve dos nombres DNS: uno para la API y otro para Keycloak. La
@@ -31,10 +31,15 @@ API estan al principio de [README.md](README.md).
 
 - Podman rootless y un proveedor de Compose funcionales.
 - El mismo usuario sin privilegios para el instalador y Podman.
-- Revision aprobada: `<REVISAR: tag o commit>`.
-- DNS/TLS, base de datos, almacenamiento, correo e identidad: `<REVISAR>`.
-- Responsable operativo y contacto de escalado: `<REVISAR>`.
-- Objetivos RPO/RTO y ubicacion de backups: `<REVISAR>`.
+Entradas de despliegue que deben quedar registradas antes de ejecutar:
+
+| Entrada | Evidencia requerida |
+|---|---|
+| Revision aprobada | Tag o commit inmutable y aprobacion asociada |
+| Exposicion publica | URL, DNS, propietario de TLS y reglas de proxy |
+| Dependencias | Base de datos, almacenamiento, correo e identidad aplicables |
+| Operacion | Responsable del servicio y contacto de escalado |
+| Recuperacion | RPO, RTO, retencion y ubicacion de backups |
 
 ```bash
 podman info
@@ -186,7 +191,10 @@ git rev-parse HEAD > "$BACKUP_DIR/git-revision.txt"
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
   images > "$BACKUP_DIR/images.txt"
 cp .env.production.file "$BACKUP_DIR/"
-cp -a deployment/settings "$BACKUP_DIR/"
+cp .env.production.file "$BACKUP_DIR/"
+cp deployment/settings/app_production_settings.txt "$BACKUP_DIR/"
+cp deployment/settings/apache_production_settings.txt "$BACKUP_DIR/"
+cp deployment/settings/keycloak_production_settings.txt "$BACKUP_DIR/"
 chmod -R go-rwx "$BACKUP_DIR"
 ```
 
@@ -295,7 +303,10 @@ podman volume import <volumen-static> "$BACKUP_DIR/static.tar"
 podman volume import <volumen-keycloak-db-data> \
   "$BACKUP_DIR/keycloak-db-data.tar"
 tar -C /srv/containers/bind -xzf "$BACKUP_DIR/bind-mounts.tar.gz"
-cp "$BACKUP_DIR/<fichero-ajustes-protegido>" <ruta-configuracion-protegida>/
+install -d -m 0700 deployment/settings
+install -m 0600 "$BACKUP_DIR/app_production_settings.txt" deployment/settings/app_production_settings.txt
+install -m 0600 "$BACKUP_DIR/apache_production_settings.txt" deployment/settings/apache_production_settings.txt
+install -m 0600 "$BACKUP_DIR/keycloak_production_settings.txt" deployment/settings/keycloak_production_settings.txt
 ```
 
 Restaurar el fichero de ajustes protegido, desplegar la revision anotada en
