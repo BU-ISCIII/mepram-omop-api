@@ -52,7 +52,7 @@
     "deployment_health/views.py": "d19cc3e8fef8519bae2b7fbdc25d17f6ae7df02479aa8890f4b4d250bb07f2e4",
     "docker-compose.prod.yml": "21841ce77d995009278a7a3969ef690d49abb1f8b360783379677fa3c6a16c33",
     "docker-compose.test.yml": "0d3db71ce8a290b6fd50797f6b2a3b53896156efd15fcf24b2e9318e464c560e",
-    "install.sh": "7a0e9b7612eecf7e7fd19f31d5ff176b146eb576119d7b3ba47963cbbef08327",
+    "install.sh": "73b83cc63bce4374e3cce9592e114617e53fc431d5a4c14cee41511aa50457e3",
     "scripts/container_start.sh": "3a48216376b205a6dfa065861cba80e1d3751346d59410b6a407a3b290e2603d",
     "scripts/smoke_test.sh": "1674c51761f2390f0b660a88d7dc2d731ee93ad87f57ada613e5c0a0cfb9c5e8"
   },
