@@ -49,6 +49,8 @@ INSTALLED_APPS = [
     # management commands, including import_dashboard_sql.
     "rest_framework",
     "drf_spectacular",
+    # Required by the standard --script_before/--script_after deployment hooks.
+    "django_extensions",
     "core.apps.CoreConfig",
     "django.contrib.admin",
     "django.contrib.auth",
