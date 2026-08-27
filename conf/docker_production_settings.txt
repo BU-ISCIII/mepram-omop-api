@@ -34,7 +34,7 @@ APP_SHELL='/sbin/nologin'
 APP_PORT='8001'
 
 ### Persistent host sources
-# Documents use the Compose-managed app_documents named volume.
+# Documents use the Compose-managed mepram-omop-api_documents named volume.
 # Application logs remain on the host and must be creatable by the installer.
 # Example: /var/log/local/mepram-omop-api/apps
 HOST_LOG_PATH='/var/log/local/mepram-omop-api/apps'
@@ -91,7 +91,7 @@ API_DOCS_REQUIRE_STAFF='true'
 # containing the realm's public signing keys; neither value is a secret.
 # Public example: https://auth.example.org/realms/mepram
 OIDC_ISSUER='https://CHANGE_ME/realms/CHANGE_ME'
-# Internal Compose example: http://keycloak:8080/realms/mepram/protocol/openid-connect/certs
+# Internal Compose example: http://mepram-omop-api-keycloak:8080/realms/mepram/protocol/openid-connect/certs
 OIDC_JWKS_URL='https://CHANGE_ME/realms/CHANGE_ME/protocol/openid-connect/certs'
 # Audience validates the token's aud claim; client ID identifies the frontend
 # client accepted by MePRAM's additional authorized-party checks.

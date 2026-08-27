@@ -66,7 +66,7 @@ APACHE_LIMIT_REQUEST_BODY='52428800'
 # Public Keycloak DNS handled by this vhost. Example: auth.example.org
 APACHE_KEYCLOAK_SERVER_NAME='CHANGE_ME_KEYCLOAK_DNS_NAME'
 # Compose service receiving Keycloak traffic. Example: keycloak
-APACHE_KEYCLOAK_UPSTREAM_SERVICE='keycloak'
+APACHE_KEYCLOAK_UPSTREAM_SERVICE='mepram-omop-api-keycloak'
 # Internal Keycloak service port. Example: 8080
 APACHE_KEYCLOAK_UPSTREAM_PORT='8080'
 # Maximum proxy request duration in seconds. Example: 120
