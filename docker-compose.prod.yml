@@ -1,7 +1,7 @@
 services:
-  # BEGIN BU-ISCIII SERVICE: mepram-omop-api (django)
-  mepram-omop-api:
-    image: "${MEPRAM_OMOP_API_IMAGE:-mepram-omop-api:local}"
+  # BEGIN BU-ISCIII SERVICE: app (django)
+  app:
+    image: "${APP_IMAGE:-mepram-omop-api:local}"
     build:
       context: "."
       dockerfile: "Dockerfile"
@@ -11,62 +11,62 @@ services:
         INSTALL_CONF: "conf/.runtime_install_settings.txt"
         USE_INSTALL_CONF_SECRET: "true"
         RENDER_DJANGO_SETTINGS: "false"
-        APP_UID: ${MEPRAM_OMOP_API_APP_UID:?MEPRAM_OMOP_API_APP_UID is required}
-        APP_GID: ${MEPRAM_OMOP_API_APP_GID:?MEPRAM_OMOP_API_APP_GID is required}
-        APP_PORT: ${MEPRAM_OMOP_API_APP_PORT:?MEPRAM_OMOP_API_APP_PORT is required}
-        APP_REPO_PATH: ${MEPRAM_OMOP_API_REPO_PATH:?MEPRAM_OMOP_API_REPO_PATH is required}
-        APP_INSTALL_PATH: ${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}
+        APP_UID: ${APP_APP_UID:?APP_APP_UID is required}
+        APP_GID: ${APP_APP_GID:?APP_APP_GID is required}
+        APP_PORT: ${APP_APP_PORT:?APP_APP_PORT is required}
+        APP_REPO_PATH: ${APP_REPO_PATH:?APP_REPO_PATH is required}
+        APP_INSTALL_PATH: ${APP_INSTALL_PATH:?APP_INSTALL_PATH is required}
     restart: unless-stopped
-    user: "${MEPRAM_OMOP_API_APP_UID:?MEPRAM_OMOP_API_APP_UID is required}:${MEPRAM_OMOP_API_APP_GID:?MEPRAM_OMOP_API_APP_GID is required}"
+    user: "${APP_APP_UID:?APP_APP_UID is required}:${APP_APP_GID:?APP_APP_GID is required}"
     environment:
       APP_MODE: prod
-      INSTALL_PATH: ${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}
-      APP_INSTALL_PATH: ${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}
-      APP_PORT: ${MEPRAM_OMOP_API_APP_PORT:?MEPRAM_OMOP_API_APP_PORT is required}
+      INSTALL_PATH: ${APP_INSTALL_PATH:?APP_INSTALL_PATH is required}
+      APP_INSTALL_PATH: ${APP_INSTALL_PATH:?APP_INSTALL_PATH is required}
+      APP_PORT: ${APP_APP_PORT:?APP_APP_PORT is required}
       PROJECT_MODULE: "conf"
-      DB_HOST: ${MEPRAM_OMOP_API_DB_HOST:?MEPRAM_OMOP_API_DB_HOST is required}
-      DB_PORT: ${MEPRAM_OMOP_API_DB_PORT:?MEPRAM_OMOP_API_DB_PORT is required}
-      DB_NAME: ${MEPRAM_OMOP_API_DB_NAME:?MEPRAM_OMOP_API_DB_NAME is required}
-      DB_USER: ${MEPRAM_OMOP_API_DB_USER:?MEPRAM_OMOP_API_DB_USER is required}
-      DB_PASSWORD: ${MEPRAM_OMOP_API_DB_PASSWORD:?MEPRAM_OMOP_API_DB_PASSWORD is required}
-      DJANGO_SECRET_KEY: ${MEPRAM_OMOP_API_DJANGO_SECRET_KEY:?MEPRAM_OMOP_API_DJANGO_SECRET_KEY is required}
-      DJANGO_ALLOWED_HOSTS: ${MEPRAM_OMOP_API_DJANGO_ALLOWED_HOSTS:?MEPRAM_OMOP_API_DJANGO_ALLOWED_HOSTS is required}
-      MEPRAM_DASHBOARD_SCHEMA: ${MEPRAM_OMOP_API_MEPRAM_DASHBOARD_SCHEMA:?MEPRAM_OMOP_API_MEPRAM_DASHBOARD_SCHEMA is required}
-      API_CORS_ALLOWED_ORIGINS: ${MEPRAM_OMOP_API_API_CORS_ALLOWED_ORIGINS:-}
-      API_THROTTLE_RATE: ${MEPRAM_OMOP_API_API_THROTTLE_RATE:-500/hour}
-      API_DOCS_REQUIRE_STAFF: ${MEPRAM_OMOP_API_API_DOCS_REQUIRE_STAFF:-true}
-      OIDC_AUTH_REQUIRED: ${MEPRAM_OMOP_API_OIDC_AUTH_REQUIRED:?MEPRAM_OMOP_API_OIDC_AUTH_REQUIRED is required}
-      OIDC_ISSUER: ${MEPRAM_OMOP_API_OIDC_ISSUER:?MEPRAM_OMOP_API_OIDC_ISSUER is required}
-      OIDC_JWKS_URL: ${MEPRAM_OMOP_API_OIDC_JWKS_URL:?MEPRAM_OMOP_API_OIDC_JWKS_URL is required}
-      OIDC_AUDIENCE: ${MEPRAM_OMOP_API_OIDC_AUDIENCE:?MEPRAM_OMOP_API_OIDC_AUDIENCE is required}
-      OIDC_CLIENT_ID: ${MEPRAM_OMOP_API_OIDC_CLIENT_ID:?MEPRAM_OMOP_API_OIDC_CLIENT_ID is required}
-      OIDC_JWKS_CACHE_TTL_SECONDS: ${MEPRAM_OMOP_API_OIDC_JWKS_CACHE_TTL_SECONDS:-300}
-      OIDC_JWKS_TIMEOUT_SECONDS: ${MEPRAM_OMOP_API_OIDC_JWKS_TIMEOUT_SECONDS:-5}
+      DB_HOST: ${APP_DB_HOST:?APP_DB_HOST is required}
+      DB_PORT: ${APP_DB_PORT:?APP_DB_PORT is required}
+      DB_NAME: ${APP_DB_NAME:?APP_DB_NAME is required}
+      DB_USER: ${APP_DB_USER:?APP_DB_USER is required}
+      DB_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}
+      DJANGO_SECRET_KEY: ${APP_DJANGO_SECRET_KEY:?APP_DJANGO_SECRET_KEY is required}
+      DJANGO_ALLOWED_HOSTS: ${APP_DJANGO_ALLOWED_HOSTS:?APP_DJANGO_ALLOWED_HOSTS is required}
+      MEPRAM_DASHBOARD_SCHEMA: ${APP_MEPRAM_DASHBOARD_SCHEMA:?APP_MEPRAM_DASHBOARD_SCHEMA is required}
+      API_CORS_ALLOWED_ORIGINS: ${APP_API_CORS_ALLOWED_ORIGINS:-}
+      API_THROTTLE_RATE: ${APP_API_THROTTLE_RATE:-500/hour}
+      API_DOCS_REQUIRE_STAFF: ${APP_API_DOCS_REQUIRE_STAFF:-true}
+      OIDC_AUTH_REQUIRED: ${APP_OIDC_AUTH_REQUIRED:?APP_OIDC_AUTH_REQUIRED is required}
+      OIDC_ISSUER: ${APP_OIDC_ISSUER:?APP_OIDC_ISSUER is required}
+      OIDC_JWKS_URL: ${APP_OIDC_JWKS_URL:?APP_OIDC_JWKS_URL is required}
+      OIDC_AUDIENCE: ${APP_OIDC_AUDIENCE:?APP_OIDC_AUDIENCE is required}
+      OIDC_CLIENT_ID: ${APP_OIDC_CLIENT_ID:?APP_OIDC_CLIENT_ID is required}
+      OIDC_JWKS_CACHE_TTL_SECONDS: ${APP_OIDC_JWKS_CACHE_TTL_SECONDS:-300}
+      OIDC_JWKS_TIMEOUT_SECONDS: ${APP_OIDC_JWKS_TIMEOUT_SECONDS:-5}
     volumes:
-      - mepram-omop-api_documents:${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}/documents:z
-      - ${MEPRAM_OMOP_API_HOST_LOG_PATH:?MEPRAM_OMOP_API_HOST_LOG_PATH is required}:${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}/logs:Z
-      - ${MEPRAM_OMOP_API_DJANGO_SETTINGS_PATH:?MEPRAM_OMOP_API_DJANGO_SETTINGS_PATH is required}:${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}/conf/settings.py:Z
-      - mepram-omop-api_static:${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}/static:z
+      - app_documents:${APP_INSTALL_PATH:?APP_INSTALL_PATH is required}/documents:z
+      - ${APP_HOST_LOG_PATH:?APP_HOST_LOG_PATH is required}:${APP_INSTALL_PATH:?APP_INSTALL_PATH is required}/logs:Z
+      - ${APP_DJANGO_SETTINGS_PATH:?APP_DJANGO_SETTINGS_PATH is required}:${APP_INSTALL_PATH:?APP_INSTALL_PATH is required}/conf/settings.py:Z
+      - app_static:${APP_INSTALL_PATH:?APP_INSTALL_PATH is required}/static:z
     healthcheck:
       test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ['APP_PORT'] + '/health/', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 12
     ports:
-      - "127.0.0.1:${MEPRAM_OMOP_API_APP_PORT:?MEPRAM_OMOP_API_APP_PORT is required}:${MEPRAM_OMOP_API_APP_PORT:?MEPRAM_OMOP_API_APP_PORT is required}"
+      - "127.0.0.1:${APP_APP_PORT:?APP_APP_PORT is required}:${APP_APP_PORT:?APP_APP_PORT is required}"
     # Docker Engine on Linux needs this explicit mapping. Podman also supports
     # host-gateway and conventionally exposes host.docker.internal itself, so
     # host-based dependencies can use one hostname with either engine.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks: [deployment_net]
-  # END BU-ISCIII SERVICE: mepram-omop-api
+  # END BU-ISCIII SERVICE: app
   # BEGIN BU-ISCIII ADDON: apache
   mepram-omop-api-apache:
     image: registry.access.redhat.com/ubi9/httpd-24:latest
     restart: unless-stopped
     depends_on:
-      mepram-omop-api:
+      app:
         condition: service_healthy
       mepram-omop-api-keycloak:
         condition: service_healthy
@@ -94,8 +94,8 @@ services:
       - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
       # GENERATED MULTI-APP MOUNTS: one read-only static/documents pair for
       # every Django service. React assets remain inside the React image.
-      - mepram-omop-api_static:${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}/static:ro,z
-      - mepram-omop-api_documents:${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}/documents:ro,z
+      - app_static:${APP_INSTALL_PATH:?APP_INSTALL_PATH is required}/static:ro,z
+      - app_documents:${APP_INSTALL_PATH:?APP_INSTALL_PATH is required}/documents:ro,z
       # OPTIONAL APP MOUNTS belong in ADDONS.apache.MOUNTS. Examples:
       # - reports_data:/var/www/reports:ro,z
       # - /srv/public-downloads:/var/www/downloads:ro,Z
@@ -168,6 +168,6 @@ networks:
   deployment_net:
 
 volumes:
-  mepram-omop-api_documents:
-  mepram-omop-api_static:
+  app_documents:
+  app_static:
   keycloak_db_data:

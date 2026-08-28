@@ -7,7 +7,7 @@
   "PYTHON_VERSION": "3.12",
   "TIMEZONE": "Europe/Madrid",
   "SERVICES": {
-    "mepram-omop-api": {
+    "app": {
       "PROFILE": "django",
       "BUILD_CONTEXT": ".",
       "DOCKERFILE": "Dockerfile",
@@ -20,10 +20,10 @@
   },
   "ADDONS": {
     "apache": {
-      "CONFIG_SERVICE": "mepram-omop-api"
+      "CONFIG_SERVICE": "app"
     },
     "keycloak": {
-      "CONFIG_SERVICE": "mepram-omop-api"
+      "CONFIG_SERVICE": "app"
     }
   }
 }

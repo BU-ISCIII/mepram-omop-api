@@ -15,14 +15,14 @@ APPLICATION_NAME="MePRAM OMOP API"
 # Regenerate these callbacks from the descriptor; keep application-neutral
 # lifecycle mechanics below unchanged.
 # ============================================================================
-install_services=(mepram-omop-api)
+install_services=(app)
 addon_build_services=()
-permission_services=(mepram-omop-api mepram-omop-api-apache mepram-omop-api-keycloak-db mepram-omop-api-keycloak)
-configured_services=(mepram-omop-api apache keycloak)
+permission_services=(app mepram-omop-api-apache mepram-omop-api-keycloak-db mepram-omop-api-keycloak)
+configured_services=(app apache keycloak)
 
 default_service_install_conf() {
     case "$1" in
-        mepram-omop-api) [ "$mode" = test ] && echo conf/docker_test_settings.txt || echo conf/docker_production_settings.txt ;;
+        app) [ "$mode" = test ] && echo conf/docker_test_settings.txt || echo conf/docker_production_settings.txt ;;
         apache) [ "$mode" = test ] && echo conf/apache/apache_test_settings.txt || echo conf/apache/apache_production_settings.txt ;;
         keycloak) [ "$mode" = test ] && echo conf/keycloak/keycloak_test_settings.txt || echo conf/keycloak/keycloak_production_settings.txt ;;
         *) return 1 ;;
@@ -30,7 +30,7 @@ default_service_install_conf() {
 }
 service_build_context_dir() {
     case "$1" in
-        mepram-omop-api) echo . ;;
+        app) echo . ;;
         *) return 1 ;;
     esac
 }
@@ -60,31 +60,31 @@ service_install_path() {
 }
 service_readiness_path() {
     case "$1" in
-        mepram-omop-api) echo "$(service_install_path "$1")/manage.py" ;;
+        app) echo "$(service_install_path "$1")/manage.py" ;;
         *) return 1 ;;
     esac
 }
 service_image_name() {
     case "$1" in
-        mepram-omop-api) echo mepram-omop-api:local ;;
+        app) echo mepram-omop-api:local ;;
         *) return 1 ;;
     esac
 }
 service_profile() {
     case "$1" in
-        mepram-omop-api) echo django ;;
+        app) echo django ;;
         *) return 1 ;;
     esac
 }
 service_dockerfile() {
     case "$1" in
-        mepram-omop-api) echo Dockerfile ;;
+        app) echo Dockerfile ;;
         *) return 1 ;;
     esac
 }
 service_container_install_conf() {
     case "$1" in
-        mepram-omop-api) echo conf/.runtime_install_settings.txt ;;
+        app) echo conf/.runtime_install_settings.txt ;;
         *) return 1 ;;
     esac
 }
@@ -97,13 +97,13 @@ service_gid() {
 
 prepare_compose_environment() {
     local -a settings_sources=(
-        "MEPRAM_OMOP_API|${install_conf_host_by_service[mepram-omop-api]}"
+        "APP|${install_conf_host_by_service[app]}"
         "|${install_conf_host_by_service[apache]}"
         "|${install_conf_host_by_service[keycloak]}"
     )
     local -a deployment_values=(
         "GIT_REVISION|$git_revision"
-        "MEPRAM_OMOP_API_IMAGE|mepram-omop-api:local"
+        "APP_IMAGE|mepram-omop-api:local"
     )
     compose_env_file="$script_dir/.env.${mode}.file"
     write_compose_environment_file "$compose_env_file" settings_sources deployment_values
@@ -129,17 +129,17 @@ print_service_summary() {
 prepare_application_host_sources() {
     local settings_output
     if [ "$mode" = production ]; then
-        settings_output="$(service_environment_value mepram-omop-api DJANGO_SETTINGS_PATH)"
-        [ -n "$settings_output" ] || { echo "DJANGO_SETTINGS_PATH is required for mepram-omop-api" >&2; return 1; }
+        settings_output="$(service_environment_value app DJANGO_SETTINGS_PATH)"
+        [ -n "$settings_output" ] || { echo "DJANGO_SETTINGS_PATH is required for app" >&2; return 1; }
         mkdir -p "$(dirname "$settings_output")"
-        prepare_django_settings_bind_mount ./conf/template_settings.py "$settings_output" "${install_conf_host_by_service[mepram-omop-api]}"
+        prepare_django_settings_bind_mount ./conf/template_settings.py "$settings_output" "${install_conf_host_by_service[app]}"
     fi
     # Render the application-owned Apache sources only after the protected
     # settings environment has been loaded.
     local apache_source_dir="$script_dir/conf/apache"
     local apache_output_dir="$script_dir/deployment/apache"
     local apache_conf_name apache_config_service apache_log_path
-    apache_config_service=mepram-omop-api
+    apache_config_service=app
     [ -d "$apache_source_dir" ] || {
         echo "Apache source configuration directory not found: $apache_source_dir" >&2
         return 1
@@ -196,11 +196,11 @@ prepare_application_host_sources() {
 # the shared helper skips paths that are not used by the active mode.
 prepare_host_bind_source_permissions() {
     local log_path settings_path uid gid
-    log_path="$(service_environment_value mepram-omop-api HOST_LOG_PATH)"
-    settings_path="$(service_environment_value mepram-omop-api DJANGO_SETTINGS_PATH)"
-    [ -n "$log_path" ] || { echo "HOST_LOG_PATH is required for mepram-omop-api" >&2; return 1; }
-    [ -n "$settings_path" ] || { echo "DJANGO_SETTINGS_PATH is required for mepram-omop-api" >&2; return 1; }
-    uid="$(service_uid mepram-omop-api)"; gid="$(service_gid mepram-omop-api)"
+    log_path="$(service_environment_value app HOST_LOG_PATH)"
+    settings_path="$(service_environment_value app DJANGO_SETTINGS_PATH)"
+    [ -n "$log_path" ] || { echo "HOST_LOG_PATH is required for app" >&2; return 1; }
+    [ -n "$settings_path" ] || { echo "DJANGO_SETTINGS_PATH is required for app" >&2; return 1; }
+    uid="$(service_uid app)"; gid="$(service_gid app)"
     local -a mepram_omop_api_host_bind_permission_spec=(
         "$log_path|$uid:$gid|0775"
         "$(dirname "$settings_path")|-|0755"
@@ -233,7 +233,7 @@ prepare_running_container_mount_permissions() {
     local service_name="$1" container_id="$2"
     local install_path uid gid
     case "$service_name" in
-        mepram-omop-api)
+        app)
             install_path="$(service_install_path "$service_name")"
             uid="$(service_uid "$service_name")"; gid="$(service_gid "$service_name")"
             local -a mepram_omop_api_running_mount_permission_spec=(
@@ -267,7 +267,7 @@ bootstrap_service() {
     local repo_path runtime_conf uid gid status
     local -a args
     case "$service_name" in
-        mepram-omop-api)
+        app)
             repo_path="$(service_repo_path "$service_name")"
             # Fixed temporary in-container path; this is not operator configuration.
             runtime_conf=conf/.runtime_install_settings.txt
@@ -290,7 +290,7 @@ bootstrap_service() {
 build_production_service() {
     local service_name="$1" context="$2" dockerfile="$3"
     case "$service_name" in
-        mepram-omop-api)
+        app)
             engine_build --no-cache --file "$context/$dockerfile" \
                 --secret "id=install_conf,src=${install_conf_host_by_service[$service_name]}" \
                 --build-arg GIT_REVISION="$git_revision" \
@@ -327,9 +327,9 @@ load_test_deployment_data() {
     fi
     [ -f "$demo_data" ] || die "Dashboard demo-data SQL file not found: $demo_data"
 
-    app_container="$(current_service_container mepram-omop-api)" \
+    app_container="$(current_service_container app)" \
         || die "Unable to resolve the mepram-omop-api container for demo-data loading"
-    app_install_path="$(service_install_path mepram-omop-api)"
+    app_install_path="$(service_install_path app)"
     container_sql="/tmp/mepram-dashboard-demo.sql"
 
     echo "Loading MePRAM dashboard demo data from $demo_data"

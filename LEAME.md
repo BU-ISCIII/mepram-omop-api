@@ -86,10 +86,10 @@ Persistencia declarada por el despliegue:
 
 | Activo | Ubicacion de produccion | Requisito de recuperacion |
 |---|---|---|
-| Base de datos de `mepram-omop-api` | MySQL externa `mepram_omop` | Backup consistente antes de migrar |
-| Documentos de `mepram-omop-api` | Volumen `mepram-omop-api_documents` | Exportar el volumen |
-| Static de `mepram-omop-api` | Volumen `mepram-omop-api_static` | Regenerable mediante `collectstatic` |
-| Logs de `mepram-omop-api` | Bind `/var/log/local/mepram-omop-api/apps` | Retener/rotar segun politica institucional |
+| Base de datos de `app` | MySQL externa `mepram_omop` | Backup consistente antes de migrar |
+| Documentos de `app` | Volumen `app_documents` | Exportar el volumen |
+| Static de `app` | Volumen `app_static` | Regenerable mediante `collectstatic` |
+| Logs de `app` | Bind `/var/log/local/mepram-omop-api/apps` | Retener/rotar segun politica institucional |
 | Settings renderizados | Bind `/srv/containers/bind/mepram-omop-api/settings/` | Backup de configuracion protegida |
 | Logs de Apache | Bind `/var/log/local/mepram-omop-api/apache` | Retener/rotar segun politica institucional |
 | Configuracion Apache | `deployment/apache/` en el checkout | Regenerable; conservar fuentes revisadas |
@@ -137,7 +137,7 @@ copia en las capas de las imagenes.
 
 ```bash
 install -d -m 0700 deployment/settings
-install -m 0600 conf/docker_production_settings.txt deployment/settings/mepram-omop-api_production_settings.txt
+install -m 0600 conf/docker_production_settings.txt deployment/settings/app_production_settings.txt
 install -m 0600 conf/apache/apache_production_settings.txt deployment/settings/apache_production_settings.txt
 install -m 0600 conf/keycloak/keycloak_production_settings.txt deployment/settings/keycloak_production_settings.txt
 ```
@@ -163,7 +163,7 @@ donde indica cada servicio:
 ```bash
 PODMAN_USER='<usuario-podman>'
 (
-  source deployment/settings/mepram-omop-api_production_settings.txt
+  source deployment/settings/app_production_settings.txt
   : "${HOST_LOG_PATH:?HOST_LOG_PATH is required for mepram-omop-api}"
   : "${DJANGO_SETTINGS_PATH:?DJANGO_SETTINGS_PATH is required for mepram-omop-api}"
   sudo install -d -o "$PODMAN_USER" -g "$PODMAN_USER" \
@@ -192,7 +192,7 @@ manualmente.
 
 ```bash
 bash container_install.sh --action fix-permissions --engine podman \
-  --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
 ## Backup antes de actualizar
@@ -206,7 +206,7 @@ git rev-parse HEAD > "$BACKUP_DIR/git-revision.txt"
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
   images > "$BACKUP_DIR/images.txt"
 cp .env.production.file "$BACKUP_DIR/"
-cp deployment/settings/mepram-omop-api_production_settings.txt "$BACKUP_DIR/"
+cp deployment/settings/app_production_settings.txt "$BACKUP_DIR/"
 cp deployment/settings/apache_production_settings.txt "$BACKUP_DIR/"
 cp deployment/settings/keycloak_production_settings.txt "$BACKUP_DIR/"
 chmod -R go-rwx "$BACKUP_DIR"
@@ -263,7 +263,7 @@ las migraciones. Proporcionarlo explicitamente solo en la primera instalacion:
 bash container_install.sh --action install --engine podman \
   --git_revision <revision-aprobada> \
   --demo_data ../mepram-omop-dashboard.sql \
-  --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt \
+  --install_conf_map app,deployment/settings/app_production_settings.txt \
   --install_conf_map apache,deployment/settings/apache_production_settings.txt \
   --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
@@ -273,7 +273,7 @@ Actualizacion (sin `--demo_data`, para no truncar ni recargar los agregados):
 ```bash
 bash container_install.sh --action upgrade --engine podman \
   --git_revision <nueva-revision-aprobada> \
-  --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt 2>&1 | tee "$(date +%Y%m%d_%H%M%S)_prod_install.log"
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt 2>&1 | tee "$(date +%Y%m%d_%H%M%S)_prod_install.log"
 ```
 
 Durante `--action upgrade`, `container_install.sh`:
@@ -313,7 +313,7 @@ la revision anterior registrada y repetir las pruebas:
 ```bash
 bash container_install.sh --action upgrade --engine podman \
   --git_revision <revision-anterior> \
-  --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
 Si no son compatibles, detener escrituras y restaurar el punto completo:
@@ -326,11 +326,11 @@ podman volume import <volumen-documents> "$BACKUP_DIR/documents.tar"
 podman volume import <volumen-static> "$BACKUP_DIR/static.tar"
 tar -C /srv/containers/bind -xzf "$BACKUP_DIR/bind-mounts.tar.gz"
 install -d -m 0700 deployment/settings
-install -m 0600 "$BACKUP_DIR/mepram-omop-api_production_settings.txt" deployment/settings/mepram-omop-api_production_settings.txt
+install -m 0600 "$BACKUP_DIR/app_production_settings.txt" deployment/settings/app_production_settings.txt
 install -m 0600 "$BACKUP_DIR/apache_production_settings.txt" deployment/settings/apache_production_settings.txt
 install -m 0600 "$BACKUP_DIR/keycloak_production_settings.txt" deployment/settings/keycloak_production_settings.txt
 bash container_install.sh --action fix-permissions --engine podman \
-  --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 # Arrancar solo la base de datos, esperar readiness y restaurar su dump logico.
 podman compose --env-file .env.production.file -f docker-compose.prod.yml up -d mepram-omop-api-keycloak-db
 until podman compose --env-file .env.production.file -f docker-compose.prod.yml \
@@ -362,7 +362,7 @@ Primera fase, incluso con los contenedores detenidos:
 
 ```bash
 bash container_install.sh --action fix-permissions --engine podman \
-  --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
 Esta accion no construye imagenes, no migra la base de datos y no borra datos.
@@ -372,7 +372,7 @@ Arrancar y repetirla para reparar tambien los volumenes montados:
 ```bash
 podman compose --env-file .env.production.file -f docker-compose.prod.yml up -d
 bash container_install.sh --action fix-permissions --engine podman \
-  --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+  --install_conf_map app,deployment/settings/app_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
 
 ## Operaciones utiles
@@ -385,25 +385,25 @@ podman compose --env-file .env.production.file -f docker-compose.prod.yml restar
 podman compose --env-file .env.production.file -f docker-compose.prod.yml down
 ```
 
-### Servicio Django `mepram-omop-api`
+### Servicio Django `app`
 
 ```bash
 # Logs separados del servicio.
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
-  logs --tail 200 mepram-omop-api
+  logs --tail 200 app
 
 # Entrar al contenedor.
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
-  exec mepram-omop-api bash
+  exec app bash
 
 # Regenerar static sin ejecutar migraciones.
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
-  exec mepram-omop-api bash -lc \
+  exec app bash -lc \
   'cd "$INSTALL_PATH" && source virtualenv/bin/activate && python manage.py collectstatic --noinput'
 
 # Diagnostico previo a una recuperacion de bootstrap.
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
-  exec mepram-omop-api bash -lc \
+  exec app bash -lc \
   'cd "$INSTALL_PATH" && source virtualenv/bin/activate && python manage.py check --deploy && python manage.py showmigrations --plan'
 ```
 
@@ -414,7 +414,7 @@ autoriza un bootstrap manual despues del backup:
 
 ```bash
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
-  exec mepram-omop-api bash -lc \
+  exec app bash -lc \
   'cd "$INSTALL_PATH" && source virtualenv/bin/activate && python manage.py migrate --noinput && python manage.py collectstatic --noinput'
 ```
 

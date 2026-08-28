@@ -2,10 +2,10 @@
   "config": {
     "ADDONS": {
       "apache": {
-        "CONFIG_SERVICE": "mepram-omop-api"
+        "CONFIG_SERVICE": "app"
       },
       "keycloak": {
-        "CONFIG_SERVICE": "mepram-omop-api"
+        "CONFIG_SERVICE": "app"
       }
     },
     "APP_NAME": "MePRAM OMOP API",
@@ -15,7 +15,7 @@
     "PYTHON_VERSION": "3.12",
     "REPOSITORY_URL": "https://github.com/BU-ISCIII/mepram-omop-api.git",
     "SERVICES": {
-      "mepram-omop-api": {
+      "app": {
         "API": true,
         "BUILD_CONTEXT": ".",
         "DOCKERFILE": "Dockerfile",
@@ -32,29 +32,29 @@
     ".dockerignore": "bd9c115511d6b9dae318e4b6a85ddb282e60a46fd89c6cdecccdc20c668eb0e9",
     ".gitignore": "de487336ed72efd6601b985eda1c83754d6ee33b1cb4ce9f8973411caae833ed",
     "Dockerfile": "aa0881e9519a9d601700da4e3c5079d830bd05dd85c2fd44406b0631ca87be39",
-    "LEAME.md": "f7a7bc9ebcbe9c01fbc5702b712a1f84b8daed7f7519e7b51e4af8839a308cdb",
-    "README.md": "9b35f3801d5b5506a7eca921658a0f225f5c1b55b8a61691f156598d58a6a6c6",
+    "LEAME.md": "6146888645bda53cc4a851462d7734a7aa11bd49f9e1ed969d33bff7ab0f4427",
+    "README.md": "d05f861d873eaaa1cbb62399134bf6b51305b178456ce73953f9494cbd8b1ed2",
     "conf/INSTALL_SETTINGS.md": "586d22e5a69adbccc9a7bea2789af1d7fee5ee090c627c1172be33d21712271f",
     "conf/apache/00-logs.conf": "3c2ab4e693e528d2cad37c0c5bb0bc4511803a7f206b339182de192d4e398092",
     "conf/apache/01-reverse-proxy.conf": "b503829da59b2479168b4bb69a3e74bdfc439d8a5f6d92a60a463ea70e5bcc53",
     "conf/apache/02-server-status.conf": "c3b5d26f9b551083faf0d85b188bfa9c577ff0bd3b805f0ec104fe4f7d5101cb",
     "conf/apache/apache_production_settings.txt": "7151e5081e80803018f61c1e362a0190381fb546034a8c77ac38bd585cf05295",
     "conf/apache/apache_test_settings.txt": "6fb6cbafb12011ffbbcee91d8aab9841ea66f34361ae85cdfccf9160b5bd844a",
-    "conf/docker_production_settings.txt": "6a1d982ad70380505f7b6922a64aadd658a8bc0ae155458f4f11771c62cc3da2",
-    "conf/docker_test_settings.txt": "2caad69aa14e1e3feda679b92a0766e44fc59901a0d550c796cf8547d584940d",
+    "conf/docker_production_settings.txt": "3cc029c24880d2d46eee9ea5874050acda2a50f2898ec21243fcc859647217cf",
+    "conf/docker_test_settings.txt": "8c8a76114419d83d54c658f45ca7bb20dd86c205f9ae48aaee7ee356114d46fa",
     "conf/keycloak/keycloak_production_settings.txt": "029056aae887b8c6f10dea79e99b213533bbec63345d784140777802be4a2909",
     "conf/keycloak/keycloak_test_settings.txt": "e70011a3d2a230213d952d255b4421d75ea8f1b7cc2735c75f37666b9bd9a639",
     "conf/template_settings.py": "602581e1c2d2750c97179eada7f3905a3e6bbf3bf6b1d2e9a608faa74ab71b68",
-    "container_install.sh": "9339f0bb7e7d77efe63a4f84bbe3d70b7741f39d41de07695598b08c4fae27fa",
+    "container_install.sh": "58a46f2680b00d2f81b2b4cc870bf279545ce24e5d96744495642486d639da24",
     "deployment_health/README.md": "3d7c4295938708813369deeac9edc0eb8fe2153c77d03f9138febf3aed715aa5",
     "deployment_health/__init__.py": "bedcff132309f8970b1ca72fcea20c7cb38bb727d48f82d96dbf7104922abda0",
     "deployment_health/urls.py": "8d274b44d326f26d71b05021a34969c742478efbe47691aadd8c3a90ba16f340",
     "deployment_health/views.py": "d19cc3e8fef8519bae2b7fbdc25d17f6ae7df02479aa8890f4b4d250bb07f2e4",
-    "docker-compose.prod.yml": "47bbd2e72a50ba73dd6365a6be95b182c15462bed0dc2e9ee3f4210f1cc14338",
-    "docker-compose.test.yml": "594cee61f03966d5482302e7e8e2b0828adcc5c969f5ec96fd16b04282cca6f6",
+    "docker-compose.prod.yml": "235c4e022f6ad623536ffdf8f42a88331744776604d67f311e0ad0b5db98ec4c",
+    "docker-compose.test.yml": "2c2283a9fe382a44350722013848108b548ef2336146f23b1fa8a39d85630063",
     "install.sh": "4e8d0fc252bf6fba257db8be9099b83e47bd3c6c27d5475b93003846e9eda5ef",
     "scripts/container_start.sh": "3a48216376b205a6dfa065861cba80e1d3751346d59410b6a407a3b290e2603d",
-    "scripts/smoke_test.sh": "447ba096cba5469f2a31c9d140f912a89e587e1121c811d7339507df07f4fdcc"
+    "scripts/smoke_test.sh": "1674c51761f2390f0b660a88d7dc2d731ee93ad87f57ada613e5c0a0cfb9c5e8"
   },
   "source": "BU-ISCIII deployment standards",
   "standard_version": "0.1.0"
