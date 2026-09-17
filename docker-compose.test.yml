@@ -140,7 +140,10 @@ services:
     volumes:
       # Generated test realm; edit its source configuration, not tmp-import.
       - ${KEYCLOAK_IMPORT_PATH:-./keycloak/tmp-import}:/opt/keycloak/data/import:ro,z
-    networks: [deployment_net]
+    networks:
+      deployment_net:
+        aliases:
+          - keycloak
   # END BU-ISCIII ADDON: keycloak
   mepram-omop-api-db:
     image: docker.io/library/mysql:8.0
