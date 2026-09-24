@@ -1,5 +1,6 @@
 # MePRAM OMOP API
 
+<!-- BEGIN BU-ISCIII APPLICATION: overview -->
 MePRAM OMOP API is a Django REST Framework service that exposes aggregated
 clinical dashboard data generated from an OMOP database. It provides cohort
 summaries, OMOP domains and concepts, fact and measurement aggregations, and
@@ -34,7 +35,7 @@ service address. Production application data lives in the external
 `mepram_omop` database; Keycloak identity state lives in its own persistent
 MySQL volume. See [LEAME.md](LEAME.md) for the production runbook.
 
-## Contents
+<!-- END BU-ISCIII APPLICATION: overview -->
 
 - [Get the code (required)](#get-the-code-required)
 - [Choose your path](#choose-your-path)
@@ -46,8 +47,9 @@ MySQL volume. See [LEAME.md](LEAME.md) for the production runbook.
   - [Upgrade docker deployment](#upgrade-docker-deployment)
 - [Bare-metal deployment (Ubuntu/CentOS)](#bare-metal-deployment-ubuntucentos)
 - [Common operations (Docker + bare-metal)](#common-operations-docker--bare-metal)
+- [Final configuration steps](#final-configuration-steps)
 - [Developer notes](#developer-notes)
-- [API reference](#api-reference)
+- [Application documentation](#application-documentation)
 
 ## Get the code (required)
 
@@ -169,10 +171,6 @@ that supplies fixtures or demo files must set
 in its wrapper; otherwise explicit demo data is rejected. Production never
 selects or loads demo data by default, and upgrades never reload it.
 
-MePRAM has no default demo-data download URL. A fresh test install therefore
-requires `--demo_data <path>` unless demo loading is explicitly disabled with
-`--skip_demo_data` or `--skip_test_data`.
-
 For an automatic first administrator, set `CREATE_INITIAL_SUPERUSER=true` and
 the `DJANGO_SUPERUSER_*` values in the selected test settings before install.
 An existing account is never reset. Open the loopback URL using `APP_PORT` from
@@ -211,8 +209,8 @@ nor this generated environment file is copied into image layers.
 | `mepram-omop-api` database | External production database | Database backup before migration |
 | `mepram-omop-api` documents | `mepram-omop-api_documents` named volume | Volume backup |
 | `mepram-omop-api` static | `mepram-omop-api_static` named volume | Replaceable through collectstatic |
-| `mepram-omop-api` logs | `/var/log/local/mepram-omop-api/apps` host bind | Retain/rotate per institutional log policy |
-| `mepram-omop-api` rendered settings | `/srv/containers/bind/mepram-omop-api/settings/` host bind | Protected configuration backup |
+| `mepram-omop-api` logs | Host bind configured by `HOST_LOG_PATH` in `mepram-omop-api_production_settings.txt` | Retain/rotate per institutional log policy |
+| `mepram-omop-api` rendered settings | Host bind configured by `DJANGO_SETTINGS_PATH` in `mepram-omop-api_production_settings.txt` | Protected configuration backup |
 | Apache logs | `/var/log/local/mepram-omop-api/apache` host bind | Retain/rotate per institutional log policy |
 | Rendered Apache configuration | `deployment/apache/` in the deployment checkout | Rebuildable; preserve reviewed source configuration |
 | Keycloak database | `keycloak_db_data` MySQL named volume | Database and identity backup |
@@ -232,11 +230,9 @@ request limits, timeouts, health paths, and static/media routing together.
 
 #### Scheduled jobs
 
-MePRAM OMOP API currently declares no Django `CRONJOBS`, worker service, or
-scheduled container. Dashboard data is imported explicitly through the
-installer or the `import_dashboard_sql` management command. Do not add an
-untracked host cron job; document and monitor any future scheduler as a
-first-class deployment service.
+The application developer must list every scheduler/worker, whether a failed
+job blocks a workflow, and how operators inspect and retry it. Do not add an
+untracked host cron job when the application profile owns scheduling.
 
 ### Manage containers after installation
 
@@ -346,10 +342,12 @@ and review of the version-specific guide.
 
 ### Database creation, users and grants
 
-Production databases are externally managed unless the application documents a
-different supported topology. Create a dedicated schema and least-privilege
-account, verify connectivity from the application container, and keep DBA
-commands and credentials outside this repository.
+Each Django service declares `DATABASE` as `external` or `compose`. A Compose-managed
+database is initialized from that service's protected `DB_NAME`, `DB_USER`, and
+`DB_PASSWORD` values and persists in its `<service>_db_data` volume. For an
+external database, create a dedicated schema and least-privilege account, verify
+connectivity from the application container, and keep DBA credentials outside
+this repository.
 
 Connect as an authorized database administrator without putting the password
 on the command line:
@@ -403,12 +401,19 @@ cp deployment/settings/apache_production_settings.txt "$BACKUP_DIR/"
 cp deployment/settings/keycloak_production_settings.txt "$BACKUP_DIR/"
 chmod -R go-rwx "$BACKUP_DIR"
 
+# For each Compose-managed application database:
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  exec -T <service>-db sh -c 'exec mysqldump --single-transaction --routines --triggers -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' \
+  > "$BACKUP_DIR/<service>-database.sql"
+
+# For each external application database:
 mysqldump --single-transaction --routines --triggers \
   --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password \
   "$DB_NAME" > "$BACKUP_DIR/database.sql"
 
 podman volume ls | grep 'mepram-omop-api'
 podman volume export "$DOCUMENTS_VOLUME" > "$BACKUP_DIR/documents.tar"
+# Dump logico obligatorio del estado autoritativo de Keycloak.
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
   exec -T mepram-omop-api-keycloak-db sh -c \
   'exec mysqldump --single-transaction --routines --triggers -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' \
@@ -455,6 +460,8 @@ DB_PORT='3306'
 DB_NAME='CHANGE_ME'
 DB_USER='CHANGE_ME'
 podman compose --env-file .env.production.file -f docker-compose.prod.yml down
+# Restore external databases directly. For Compose-managed databases, start
+# <service>-db, wait for its healthcheck, and import through that service.
 mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password \
   "$DB_NAME" < "$BACKUP_DIR/database.sql"
 podman volume import "$DOCUMENTS_VOLUME" "$BACKUP_DIR/documents.tar"
@@ -562,21 +569,35 @@ podman compose --env-file .env.production.file -f docker-compose.prod.yml restar
 
 #### Keycloak realm bind
 
-The installer automatically copies repository-owned JSON from
-`KEYCLOAK_REALM_SOURCE_PATH` to the deployment-owned `KEYCLOAK_IMPORT_PATH`
-before Compose starts. The production bind source is:
+The installer copies repository-owned JSON from `KEYCLOAK_REALM_SOURCE_PATH`
+into the deployment-owned `KEYCLOAK_IMPORT_PATH` before Compose starts. With
+the generated production default, the read-only bind source is:
 
 ```text
 /srv/containers/bind/mepram-omop-api/keycloak/realm-import/
 ```
 
-Do not modify ownership or modes on `conf/keycloak/realm-import/`. The installer
-creates the staging directory when the application bind root is writable and
-assigns only the staged copies to Keycloak as `1000:0` with mode `0640`. Include
-the staged directory in configuration backups; `keycloak_db_data` remains the
-authoritative identity backup.
+Do not change permissions on the repository source. The installer creates the
+staging directory when `/srv/containers/bind/mepram-omop-api` is writable by the
+deployment user and assigns staged files to Keycloak as `1000:0` with mode
+`0640`. Back up this directory with the other protected deployment binds, but
+use `keycloak_db_data` as the authoritative identity backup.
+
+## Final configuration steps
+
+<!-- BEGIN BU-ISCIII APPLICATION: final-configuration -->
+The application developer must document real post-install workflows here:
+initial administrator ownership, email delivery, identity-provider clients,
+storage credentials, scheduled jobs, and one representative user workflow.
+The generated baseline creates the initial Django administrator only when its
+profile settings explicitly request it.
+<!-- END BU-ISCIII APPLICATION: final-configuration -->
 
 ## Developer notes
+
+<!-- BEGIN BU-ISCIII APPLICATION: developer-notes -->
+Add application-specific development, test, and release workflows here.
+<!-- END BU-ISCIII APPLICATION: developer-notes -->
 
 ### Shared container installer library
 
@@ -619,7 +640,10 @@ bash scripts/smoke_test.sh --engine podman
 Application developers must extend the baseline smoke test with authenticated
 and domain-specific read workflows without removing the generated checks.
 
-## API reference
+## Application documentation
+
+<!-- BEGIN BU-ISCIII APPLICATION: documentation-links -->
+### API reference
 
 All application endpoints are under `/v1` and operate on Django-managed
 dashboard tables populated from the approved aggregate SQL import. The main
@@ -650,3 +674,5 @@ validated against
 Operational procedures and rollback are documented in [LEAME.md](LEAME.md).
 Project issues and support requests should be routed through the repository's
 maintainer-approved support channel; do not include clinical data or secrets.
+
+<!-- END BU-ISCIII APPLICATION: documentation-links -->

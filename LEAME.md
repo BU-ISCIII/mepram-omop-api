@@ -5,12 +5,6 @@ despliegue de produccion. Los comandos generados son reutilizables. Antes de la
 aprobacion, el responsable debe registrar las entradas de despliegue indicadas
 abajo con valores o referencias institucionales verificadas.
 
-MePRAM OMOP API publica agregados clinicos generados desde OMOP mediante
-Django. Apache sirve dos nombres DNS: uno para la API y otro para Keycloak. La
-API consulta la base MySQL externa `mepram_omop`; Keycloak usa su propia base
-MySQL persistente. El esquema completo de infraestructura y el alcance de la
-API estan al principio de [README.md](README.md).
-
 ## Indice
 
 - [Requisitos](#requisitos)
@@ -25,13 +19,13 @@ API estan al principio de [README.md](README.md).
 - [Rollback](#rollback)
 - [Reparar permisos](#reparar-permisos)
 - [Operaciones utiles](#operaciones-utiles)
-- [Servicio Keycloak](#servicio-keycloak)
 - [Notas de permisos](#notas-de-permisos)
 
 ## Requisitos
 
 - Podman rootless y un proveedor de Compose funcionales.
 - El mismo usuario sin privilegios para el instalador y Podman.
+
 Entradas de despliegue que deben quedar registradas antes de ejecutar:
 
 | Entrada | Evidencia requerida |
@@ -54,9 +48,10 @@ completo. La libreria compartida detecta ambos proveedores automaticamente.
 
 ## Estructura de directorios en los servidores
 
-Todos los despliegues usan esta estructura institucional. El nombre de la
-aplicacion separa sus fuentes bind, logs y backups; Podman administra su propio
-storage y no debe modificarse manualmente.
+Todos los despliegues usan esta estructura institucional. El despliegue separa
+sus fuentes, binds, logs y backups; un servicio externo puede conservar un
+namespace distinto, definido por sus rutas protegidas. Podman administra su
+propio storage y no debe modificarse manualmente.
 
 ```text
 /opt/containers_apps/
@@ -68,16 +63,14 @@ storage y no debe modificarse manualmente.
 ├── backup/
 │   └── mepram-omop-api/               # Backup central recomendado
 ├── bind/
-│   └── mepram-omop-api/
-│       ├── settings/                   # settings.py renderizado por servicio
-│       └── keycloak/
-│           └── realm-import/           # JSON staged para bind read-only
+│   └── <namespace-configurado>/
+│       └── settings/                   # settings.py renderizado por servicio
 ├── shared/                             # Datos compartidos entre aplicaciones
 └── storage/
     └── <usuario-podman>/               # Storage rootless gestionado por Podman
 
 /var/log/local/
-└── mepram-omop-api/
+└── <namespace-configurado>/
     ├── apache/
     └── apps/
 ```
@@ -86,21 +79,22 @@ Persistencia declarada por el despliegue:
 
 | Activo | Ubicacion de produccion | Requisito de recuperacion |
 |---|---|---|
-| Base de datos de `mepram-omop-api` | MySQL externa `mepram_omop` | Backup consistente antes de migrar |
-| Documentos de `mepram-omop-api` | Volumen `mepram-omop-api_documents` | Exportar el volumen |
-| Static de `mepram-omop-api` | Volumen `mepram-omop-api_static` | Regenerable mediante `collectstatic` |
-| Logs de `mepram-omop-api` | Bind `/var/log/local/mepram-omop-api/apps` | Retener/rotar segun politica institucional |
-| Settings renderizados | Bind `/srv/containers/bind/mepram-omop-api/settings/` | Backup de configuracion protegida |
-| Logs de Apache | Bind `/var/log/local/mepram-omop-api/apache` | Retener/rotar segun politica institucional |
-| Configuracion Apache | `deployment/apache/` en el checkout | Regenerable; conservar fuentes revisadas |
-| Base de datos Keycloak | Volumen MySQL `keycloak_db_data` | Backup autoritativo de identidades |
-| Realm staged de Keycloak | Bind read-only `/srv/containers/bind/mepram-omop-api/keycloak/realm-import/` | Backup de configuracion; no sustituye la base de datos |
+| `mepram-omop-api` database | External production database | Database backup before migration |
+| `mepram-omop-api` documents | `mepram-omop-api_documents` named volume | Volume backup |
+| `mepram-omop-api` static | `mepram-omop-api_static` named volume | Replaceable through collectstatic |
+| `mepram-omop-api` logs | Host bind configured by `HOST_LOG_PATH` in `mepram-omop-api_production_settings.txt` | Retain/rotate per institutional log policy |
+| `mepram-omop-api` rendered settings | Host bind configured by `DJANGO_SETTINGS_PATH` in `mepram-omop-api_production_settings.txt` | Protected configuration backup |
+| Apache logs | `/var/log/local/mepram-omop-api/apache` host bind | Retain/rotate per institutional log policy |
+| Rendered Apache configuration | `deployment/apache/` in the deployment checkout | Rebuildable; preserve reviewed source configuration |
+| Keycloak database | `keycloak_db_data` MySQL named volume | Database and identity backup |
+| Keycloak staged realm | `/srv/containers/bind/mepram-omop-api/keycloak/realm-import/` read-only host bind | Back up with deployment configuration; reproducible bootstrap input, not authoritative identity state |
 
 ## Preparar checkout y backup
 
 Crear solo las ubicaciones necesarias para obtener el codigo y guardar backups.
 Sustituir `<usuario-podman>` por la cuenta que ejecutara siempre Podman y el
-instalador. Los binds y logs se crean despues de completar los ajustes.
+instalador; normalmente es la cuenta de la sesion actual. Los binds y logs se
+crean mas adelante, despues de completar los ajustes protegidos.
 
 ```bash
 sudo mkdir -p /opt/containers_apps/mepram-omop-api
@@ -127,7 +121,7 @@ Registrar el commit exacto con `git rev-parse HEAD`.
 
 ## Configurar los ajustes de produccion
 
-Crear un fichero ignorado y con modo `0600` por servicio a partir de su
+Este codigo va a crear un fichero ignorado y con modo `0600` por servicio a partir de su
 `conf/docker_production_settings.txt`. Resolver todos los `CHANGE_ME` y revisar
 la matriz [`conf/INSTALL_SETTINGS.md`](conf/INSTALL_SETTINGS.md). El instalador
 genera `.env.production.file` con valores runtime, incluidos secretos copiados
@@ -142,9 +136,6 @@ install -m 0600 conf/apache/apache_production_settings.txt deployment/settings/a
 install -m 0600 conf/keycloak/keycloak_production_settings.txt deployment/settings/keycloak_production_settings.txt
 ```
 
-Editar unicamente las copias bajo `deployment/settings/`. Los comandos de
-instalacion y actualizacion usan estas rutas protegidas.
-
 Valores que requieren decision del responsable de la aplicacion:
 
 - hostnames publicos, TLS y proxy;
@@ -153,12 +144,16 @@ Valores que requieren decision del responsable de la aplicacion:
 - correo, identidad, almacenamiento y ajustes propios de la aplicacion;
 - administrador inicial y transferencia segura de sus credenciales.
 
-Completar todas esas decisiones y resolver cada `CHANGE_ME` antes de continuar.
+Editar unicamente las copias bajo `deployment/settings/`, completar todas esas
+decisiones y resolver cada `CHANGE_ME` antes de continuar. Los comandos de
+instalacion y actualizacion usan estas rutas protegidas.
 
 ## Preparar directorios persistentes del host
 
-Solo despues de completar y revisar esos ficheros, crear los binds exactamente
-donde indica cada servicio:
+Solo despues de completar y revisar todos los ajustes, crear los binds
+exactamente donde indica cada servicio. Los ficheros se cargan como el usuario
+actual dentro de subshells; solo `install -d` usa privilegios. Esto incluye
+servicios con un namespace de host distinto al despliegue principal.
 
 ```bash
 PODMAN_USER='<usuario-podman>'
@@ -172,28 +167,46 @@ PODMAN_USER='<usuario-podman>'
 (
   source deployment/settings/apache_production_settings.txt
   : "${APACHE_LOG_PATH:?APACHE_LOG_PATH is required for apache}"
-  sudo install -d -o "$PODMAN_USER" -g "$PODMAN_USER" "$APACHE_LOG_PATH"
+  sudo install -d -o "$PODMAN_USER" -g "$PODMAN_USER" \
+    "$APACHE_LOG_PATH"
 )
 (
   source deployment/settings/keycloak_production_settings.txt
   : "${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required for keycloak}"
-  sudo install -d -o "$PODMAN_USER" -g "$PODMAN_USER" "$KEYCLOAK_IMPORT_PATH"
+  sudo install -d -o "$PODMAN_USER" -g "$PODMAN_USER" \
+    "$KEYCLOAK_IMPORT_PATH"
 )
 ```
 
-Los ficheros se cargan como el usuario actual dentro de subshells; solo
-`install -d` usa privilegios. No ejecutar los ficheros completos con `sudo`.
-El instalador asigna las copias staged del realm a `1000:0` con modo `0640`;
-no modificar los permisos de los JSON fuente.
-
-Con los directorios preparados, aplicar UID/GID internos, modos y etiquetas
-SELinux mediante el instalador. No modificar `/srv/containers/storage/`
-manualmente.
+Revisar las rutas resueltas antes de ejecutar. No usar valores procedentes de
+una configuracion no revisada y no ejecutar los ficheros completos con `sudo`.
+Aplicar despues UID/GID internos, modos y etiquetas SELinux mediante el
+instalador. No modificar `/srv/containers/storage/` manualmente.
 
 ```bash
 bash container_install.sh --action fix-permissions --engine podman \
   --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt --install_conf_map apache,deployment/settings/apache_production_settings.txt --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
 ```
+
+<!-- BEGIN BU-ISCIII APPLICATION: production-runbook -->
+Primera instalacion:
+
+El fichero `../mepram-omop-dashboard.sql` contiene los bloques de datos
+agregados que `import_dashboard_sql` carga despues de crear el esquema mediante
+las migraciones. Proporcionarlo explicitamente solo en la primera instalacion:
+
+```bash
+bash container_install.sh --action install --engine podman \
+  --git_revision <revision-aprobada> \
+  --demo_data ../mepram-omop-dashboard.sql \
+  --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt \
+  --install_conf_map apache,deployment/settings/apache_production_settings.txt \
+  --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
+```
+
+En actualizaciones posteriores no usar `--demo_data`, para no truncar ni
+recargar los agregados.
+<!-- END BU-ISCIII APPLICATION: production-runbook -->
 
 ## Backup antes de actualizar
 
@@ -212,9 +225,16 @@ cp deployment/settings/keycloak_production_settings.txt "$BACKUP_DIR/"
 chmod -R go-rwx "$BACKUP_DIR"
 ```
 
-Exportar la base de datos externa desde un punto coherente:
+Para cada base gestionada por Compose, exportar un dump logico desde su servicio;
+para cada base externa, exportarlo desde un punto coherente:
 
 ```bash
+# Base gestionada por Compose:
+podman compose --env-file .env.production.file -f docker-compose.prod.yml \
+  exec -T <servicio>-db sh -c 'exec mysqldump --single-transaction --routines --triggers -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' \
+  > "$BACKUP_DIR/<servicio>-database.sql"
+
+# Base externa:
 mysqldump --single-transaction --routines --triggers \
   --host=<db-host> --port=<db-port> --user=<db-user> --password \
   <db-name> > "$BACKUP_DIR/database.sql"
@@ -226,6 +246,7 @@ Localizar y exportar cada volumen no reconstruible declarado en la tabla:
 podman volume ls | grep 'mepram-omop-api'
 podman volume export <volumen-documents> > "$BACKUP_DIR/documents.tar"
 podman volume export <volumen-static> > "$BACKUP_DIR/static.tar"
+# Dump logico obligatorio del estado autoritativo de Keycloak.
 podman compose --env-file .env.production.file -f docker-compose.prod.yml \
   exec -T mepram-omop-api-keycloak-db sh -c \
   'exec mysqldump --single-transaction --routines --triggers -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' \
@@ -235,9 +256,6 @@ podman compose --env-file .env.production.file -f docker-compose.prod.yml \
 Exportar `documents` y `static` por cada servicio Django que los declare;
 omitir esos comandos para perfiles sin dichos volumenes. Aunque `static` puede
 regenerarse con `collectstatic`, conservarlo permite una restauracion exacta.
-El dump logico de `keycloak_db_data` es obligatorio: contiene el estado
-autoritativo de realms, usuarios, clientes y sesiones persistentes sin copiar
-los ficheros de una base de datos activa.
 
 Guardar tambien los bind mounts persistentes. Los logs se conservan segun su
 politica de retencion; la configuracion protegida debe incluirse siempre.
@@ -253,22 +271,7 @@ de restauracion.
 
 ## Ejecutar la actualizacion
 
-Primera instalacion:
-
-El fichero `../mepram-omop-dashboard.sql` contiene los bloques de datos
-agregados que `import_dashboard_sql` carga despues de crear el esquema mediante
-las migraciones. Proporcionarlo explicitamente solo en la primera instalacion:
-
-```bash
-bash container_install.sh --action install --engine podman \
-  --git_revision <revision-aprobada> \
-  --demo_data ../mepram-omop-dashboard.sql \
-  --install_conf_map mepram-omop-api,deployment/settings/mepram-omop-api_production_settings.txt \
-  --install_conf_map apache,deployment/settings/apache_production_settings.txt \
-  --install_conf_map keycloak,deployment/settings/keycloak_production_settings.txt
-```
-
-Actualizacion (sin `--demo_data`, para no truncar ni recargar los agregados):
+Ejecutar el comando de instalación/upgrade:
 
 ```bash
 bash container_install.sh --action upgrade --engine podman \
@@ -300,10 +303,16 @@ podman compose --env-file .env.production.file -f docker-compose.prod.yml logs -
 bash scripts/smoke_test.sh --engine podman
 ```
 
-Verificar las URL publicas de la API y Keycloak configuradas en los settings,
-la autenticacion, el correo si se usa y un flujo real de lectura agregada. La
-aplicacion no declara actualmente tareas programadas. Registrar estado,
-imagenes, revision y resultado de aceptacion.
+Completar las comprobaciones que corresponden a la topologia seleccionada:
+
+- `mepram-omop-api`: confirmar su endpoint `/health/` y un flujo representativo de lectura.
+- API de `mepram-omop-api`: confirmar la ruta documentada con autenticacion valida y el rechazo de credenciales ausentes o invalidas.
+- Apache: confirmar la URL publica registrada, DNS/TLS, proxy, cabeceras reenviadas y el endpoint restringido de server-status.
+- Keycloak: confirmar discovery del realm, validacion de tokens OIDC y login/logout; probar acceso administrativo solo cuando el add-on lo habilite.
+
+Verificar tambien correo, tareas programadas y los flujos propios documentados
+por la aplicacion. Registrar URL y resultados junto con estado, imagenes y
+revision desplegada.
 
 ## Rollback
 
@@ -320,6 +329,8 @@ Si no son compatibles, detener escrituras y restaurar el punto completo:
 
 ```bash
 podman compose --env-file .env.production.file -f docker-compose.prod.yml down
+# Restaurar directamente las bases externas. Para una base gestionada por
+# Compose, arrancar <servicio>-db, esperar su healthcheck e importar desde él.
 mysql --host=<db-host> --port=<db-port> --user=<db-user> --password \
   <db-name> < "$BACKUP_DIR/database.sql"
 podman volume import <volumen-documents> "$BACKUP_DIR/documents.tar"
@@ -343,9 +354,11 @@ podman compose --env-file .env.production.file -f docker-compose.prod.yml \
 ```
 
 Restaurar todos los ficheros de ajustes protegidos y desplegar la revision
-anotada en `git-revision.txt`. Arrancar y validar antes de
-reabrir el servicio. Los volumenes deben existir y estar vacios antes de
-`podman volume import`; recrearlos con Compose cuando sea necesario.
+anotada en `git-revision.txt`. `fix-permissions` regenera
+`.env.production.file` antes de cualquier restauracion gestionada por un
+add-on. Arrancar y validar antes de reabrir el servicio. Los volumenes deben
+existir y estar vacios antes de `podman volume import`; recrearlos con Compose
+cuando sea necesario.
 
 ## Reparar permisos
 
@@ -448,23 +461,29 @@ Si aparece `ModSecurity: Failed to open debug log file`, conservar el fichero
 para diagnostico, ejecutar `fix-permissions` y reiniciar. Si hay que sustituir
 el inode, moverlo primero a un backup en vez de borrarlo.
 
-### Servicio Keycloak
+### Bind de importacion de Keycloak
 
-```bash
-# Estado y errores de arranque, base de datos o importacion del realm.
-podman compose --env-file .env.production.file -f docker-compose.prod.yml \
-  logs --tail 200 mepram-omop-api-keycloak mepram-omop-api-keycloak-db
+El instalador copia los JSON versionados desde `KEYCLOAK_REALM_SOURCE_PATH` a
+`KEYCLOAK_IMPORT_PATH` antes de iniciar Compose. Con la configuracion generada,
+crea automaticamente esta ruta si el usuario del despliegue puede escribir en
+`/srv/containers/bind/mepram-omop-api`:
 
-# Comprobar el endpoint publico a traves del VirtualHost de Apache.
-KEYCLOAK_PUBLIC_URL='https://<dns-keycloak>'
-curl --fail --show-error \
-  "$KEYCLOAK_PUBLIC_URL/realms/mepram/.well-known/openid-configuration"
+```text
+/srv/containers/bind/mepram-omop-api/keycloak/realm-import/
 ```
 
-Un error `Permission denied` sobre `mepram-realm.json` se corrige con la accion
-`fix-permissions`; no se deben cambiar los ficheros fuente bajo
-`conf/keycloak/realm-import/`. El JSON staged solo inicializa realms nuevos y
-no sustituye el backup del volumen `keycloak_db_data`.
+En hosts donde la politica exija crear previamente cada directorio, ejecutar:
+
+```bash
+sudo mkdir -p /srv/containers/bind/mepram-omop-api/keycloak/realm-import
+sudo chown -R <usuario-podman>:<usuario-podman> \
+  /srv/containers/bind/mepram-omop-api/keycloak
+```
+
+No modificar permisos ni propietarios de los JSON dentro del repositorio. El
+instalador asigna solo las copias staged a `1000:0` con modo `0640`. Incluir el
+directorio staged en el backup de binds; `keycloak_db_data` sigue siendo la
+fuente autoritativa de identidades.
 
 ## Notas de permisos
 

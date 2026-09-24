@@ -35,10 +35,11 @@ undocumented environment variable alone does not configure Django.
 | `DB_PASSWORD` | yes | yes | Application database password |
 | `DB_ROOT_PASSWORD` | test only | yes | Root password for disposable Compose MySQL |
 
-Production uses an external database. The production Compose file deliberately
-contains no database service and publishes no database port. When that database
-runs on the container host, use `host.docker.internal` with either Docker or
-Podman; the production service maps it to the host gateway.
+`SERVICES.<name>.DATABASE` selects the production topology. The default
+`external` mode generates no database service; use `host.docker.internal` when
+the operator-managed database runs on the container host. The `compose` mode
+generates a private `<service>-db` MySQL service and persistent
+`<service>_db_data` volume; it does not publish the database port.
 
 ## Django and HTTP
 
@@ -86,7 +87,18 @@ Developer review checklist:
 - add acceptance checks for email, identity, storage, workers, and scheduled
   jobs used by real workflows.
 
+<!-- BEGIN BU-ISCIII APPLICATION: installation-settings -->
+Document application-only installation variables and their validation,
+security classification, and operational impact here.
+<!-- END BU-ISCIII APPLICATION: installation-settings -->
+
 ## Selected infrastructure add-ons
+
+Add-ons use independent settings below `conf/<addon>/`. For production, copy
+the required add-on templates to protected files and pass them through the same
+repeatable `--install_conf_map <component>,<path>` option used by application
+services. Do not add add-on credentials or deployment values to the Django
+application settings file.
 
 ### Apache
 
@@ -128,3 +140,7 @@ perform realm or user administration.
 The installer copies it to the deployment-owned `KEYCLOAK_IMPORT_PATH`, which
 is the read-only Keycloak bind source. Realm JSON does not replace a backup of
 the persistent Keycloak database, which is authoritative after initialization.
+
+<!-- BEGIN BU-ISCIII APPLICATION: addon-settings-notes -->
+Document application-specific add-on topology and cross-service values here.
+<!-- END BU-ISCIII APPLICATION: addon-settings-notes -->
