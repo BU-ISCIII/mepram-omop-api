@@ -118,7 +118,7 @@ DATABASES = {
 # remains available for deployments that expose the imported OMOP aggregates
 # through a separate schema name.
 MEPRAM_DASHBOARD_SCHEMA = os.environ.get(
-    "MEPRAM_DASHBOARD_SCHEMA", DATABASES["default"]["NAME"]
+    "MEPRAM_DASHBOARD_SCHEMA", settingsconf_MEPRAM_DASHBOARD_SCHEMA
 )
 
 # Browser clients are served independently from this API. This allow-list is

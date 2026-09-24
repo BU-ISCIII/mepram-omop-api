@@ -10,10 +10,91 @@ source "$script_dir/deployment/lib/container/django.sh"
 APP_VERSION="0.1.0"
 APPLICATION_NAME="MePRAM OMOP API"
 
+# Applications with disposable fixtures or demo files customize this callback
+# and set application_supports_test_data=true. Keep application-specific
+# fixture names, users/groups, downloads, and data-service layout here.
+# BEGIN BU-ISCIII APPLICATION: deployment-hooks
+application_supports_test_data=true
+load_test_deployment_data() {
+    local app_container app_install_path container_sql status
+
+    if [ "$skip_demo_data" = true ] \
+        || { [ "$mode" = test ] && [ "$skip_test_data" = true ] && [ -z "$demo_data" ]; }; then
+        echo "Skipping MePRAM dashboard demo data as requested"
+        return 0
+    fi
+    if [ -z "$demo_data" ]; then
+        die "MePRAM has no default demo-data download URL; provide " \
+            "--demo_data or explicitly use --skip_demo_data"
+    fi
+    [ -f "$demo_data" ] || die "Dashboard demo-data SQL file not found: $demo_data"
+
+    app_container="$(current_service_container mepram-omop-api)" \
+        || die "Unable to resolve the mepram-omop-api container for demo-data loading"
+    app_install_path="$(service_install_path mepram-omop-api)"
+    container_sql="/tmp/mepram-dashboard-demo.sql"
+
+    echo "Loading MePRAM dashboard demo data from $demo_data"
+    engine_exec cp "$demo_data" "$app_container:$container_sql"
+    status=0
+    engine_exec exec -w "$app_install_path" "$app_container" \
+        "$app_install_path/virtualenv/bin/python" manage.py \
+        import_dashboard_sql "$container_sql" --truncate || status=$?
+    engine_exec exec "$app_container" rm -f "$container_sql" || true
+    [ "$status" -eq 0 ] || die "MePRAM dashboard demo-data import failed"
+}
+
+# Add application-only host bind paths that profiles/add-ons cannot describe.
+set_application_host_bind_permissions() {
+    :
+}
+
+# Arguments: service name and running container ID. Add application-only
+# writable paths; profile/add-on permissions have already been applied.
+set_application_running_mount_permissions() {
+    :
+}
+# END BU-ISCIII APPLICATION: deployment-hooks
+
+action="install"; mode="production"; engine="docker"; git_revision="current"
+install_conf=""; compose_file=""; compose_env_file=""
+install_conf_map_entries=(); migration_script_before=(); migration_script_after=()
+demo_data=""; demo_data_service=""; demo_data_map_entries=()
+skip_demo_data=""; skip_test_data=""; skip_test_data_services=()
+load_tables=false; skip_tables=false
+
+usage() {
+    cat <<'EOF'
+Install, upgrade, or repair the application deployment.
+
+Options:
+  --action install|upgrade|fix-permissions
+  --test
+  --engine docker|podman
+  --git_revision <branch|tag|commit|current>
+  --install_conf <path>              First application service only.
+  --install_conf_map <component,path>  Repeat for application and add-on overrides.
+  --compose_file <path>
+  --script_before <name[,args]>
+  --script_after <name[,args]>
+  --script <name[,args]>
+  --tables                          Load initial tables; opt-in on upgrades.
+  --skip_tables                     Skip initial tables on a fresh install.
+  --demo_data <path>                 Single-service compatibility option.
+  --demo_data_map <service,path>     Repeat for service-specific data imports.
+  --skip_demo_data
+  --skip_test_data
+  --skip_test_data_service <service>  Repeat to skip one service's test fixtures.
+  --help
+  --version
+EOF
+}
+die() { echo "ERROR: $*" >&2; exit 1; }
+
 # ============================================================================
-# GENERATED SERVICE/ADD-ON CUSTOMIZATION
-# Regenerate these callbacks from the descriptor; keep application-neutral
-# lifecycle mechanics below unchanged.
+# GENERATED SERVICE/ADD-ON IMPLEMENTATION
+# Everything below usage() is managed by the descriptor, profiles, add-ons, or
+# common lifecycle. Put application behavior only in the block above.
 # ============================================================================
 install_services=(mepram-omop-api)
 addon_build_services=()
@@ -134,8 +215,9 @@ prepare_application_host_sources() {
         mkdir -p "$(dirname "$settings_output")"
         prepare_django_settings_bind_mount ./conf/template_settings.py "$settings_output" "${install_conf_host_by_service[mepram-omop-api]}"
     fi
-    # Render the application-owned Apache sources only after the protected
-    # settings environment has been loaded.
+    # conf/apache contains the application-owned Apache sources. Render every
+    # deployment value only after the protected settings environment is loaded,
+    # then expose the completed files as Compose bind sources.
     local apache_source_dir="$script_dir/conf/apache"
     local apache_output_dir="$script_dir/deployment/apache"
     local apache_conf_name apache_config_service apache_log_path
@@ -145,20 +227,17 @@ prepare_application_host_sources() {
         return 1
     }
     mkdir -p "$apache_output_dir"
+
     export APACHE_SERVER_NAME="${APACHE_SERVER_NAME:?APACHE_SERVER_NAME is required}"
     export APACHE_UPSTREAM_SERVICE="${APACHE_UPSTREAM_SERVICE:-$apache_config_service}"
     export APACHE_UPSTREAM_PORT="${APACHE_UPSTREAM_PORT:-$(service_environment_value "$apache_config_service" APP_PORT)}"
+    # For the default route, INSTALL_PATH means the service selected by
+    # ADDONS.apache.CONFIG_SERVICE. Multi-service routes use their explicit
+    # API_INSTALL_PATH, WEB_INSTALL_PATH, etc. values instead.
     export INSTALL_PATH="$(service_install_path "$apache_config_service")"
     export APACHE_PROXY_TIMEOUT="${APACHE_PROXY_TIMEOUT:-$(service_environment_value "$apache_config_service" GUNICORN_TIMEOUT 120)}"
     export APACHE_LOG_STEM="${APACHE_LOG_STEM:-$(normalize_apache_server_name "$APACHE_SERVER_NAME")}"
-    export APACHE_KEYCLOAK_SERVER_NAME="${APACHE_KEYCLOAK_SERVER_NAME:?APACHE_KEYCLOAK_SERVER_NAME is required}"
-    export APACHE_KEYCLOAK_UPSTREAM_SERVICE="${APACHE_KEYCLOAK_UPSTREAM_SERVICE:-mepram-omop-api-keycloak}"
-    export APACHE_KEYCLOAK_UPSTREAM_PORT="${APACHE_KEYCLOAK_UPSTREAM_PORT:-8080}"
-    export APACHE_KEYCLOAK_PROXY_TIMEOUT="${APACHE_KEYCLOAK_PROXY_TIMEOUT:-$APACHE_PROXY_TIMEOUT}"
-    export APACHE_KEYCLOAK_LOG_STEM="${APACHE_KEYCLOAK_LOG_STEM:-$(normalize_apache_server_name "$APACHE_KEYCLOAK_SERVER_NAME")}"
-    export APACHE_KEYCLOAK_FORWARDED_PROTO="${APACHE_KEYCLOAK_FORWARDED_PROTO:-$APACHE_FORWARDED_PROTO}"
-    export APACHE_KEYCLOAK_FORWARDED_PORT="${APACHE_KEYCLOAK_FORWARDED_PORT:-$APACHE_FORWARDED_PORT}"
-    export APACHE_KEYCLOAK_LIMIT_REQUEST_BODY="${APACHE_KEYCLOAK_LIMIT_REQUEST_BODY:-$APACHE_LIMIT_REQUEST_BODY}"
+
     for apache_conf_name in 00-logs.conf 01-reverse-proxy.conf 02-server-status.conf; do
         [ -f "$apache_source_dir/$apache_conf_name" ] || {
             echo "Apache source configuration not found: $apache_source_dir/$apache_conf_name" >&2
@@ -168,11 +247,12 @@ prepare_application_host_sources() {
             "$apache_source_dir/$apache_conf_name" \
             "$apache_output_dir/$apache_conf_name" 0644 || return 1
     done
+
+    # Production bind-mounts Apache logs from the host; tests use a named volume.
     if [ "$mode" = production ]; then
         apache_log_path="${APACHE_LOG_PATH:?APACHE_LOG_PATH is required}"
         mkdir -p "$apache_log_path"
     fi
-
     # Keep repository-owned realm JSON immutable. Stage it into the deployment
     # bind tree before Compose validates and starts the Keycloak container.
     local keycloak_realm_source_path keycloak_import_path realm_source realm_target
@@ -215,17 +295,25 @@ prepare_host_bind_source_permissions() {
         "$script_dir/deployment/apache/00-logs.conf|-|0644"
         "$script_dir/deployment/apache/01-reverse-proxy.conf|-|0644"
         "$script_dir/deployment/apache/02-server-status.conf|-|0644"
+        # registry.access.redhat.com/ubi9/httpd-24 runs as UID 1001 with GID 0.
+        # The shared helper applies these IDs directly for Docker and through
+        # podman unshare when the bind source belongs to a rootless userns.
         "$apache_log_path|1001:0|0775"
     )
     apply_host_permission_spec "${apache_host_bind_permission_spec[@]}"
+    # Realm imports contain deployment configuration and may contain sensitive
+    # client data. Keep the directory traversable and every JSON file non-public.
     local keycloak_import_path
     keycloak_import_path="${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required}"
     [[ "$keycloak_import_path" == /* ]] || keycloak_import_path="$script_dir/$keycloak_import_path"
-    local -a keycloak_host_bind_permission_spec=("$keycloak_import_path|-|0755")
+    local -a keycloak_host_bind_permission_spec=(
+        "$keycloak_import_path|-|0755"
+    )
     for realm_file in "$keycloak_import_path"/*.json; do
         keycloak_host_bind_permission_spec+=("$realm_file|1000:0|0640")
     done
     apply_host_permission_spec "${keycloak_host_bind_permission_spec[@]}"
+    set_application_host_bind_permissions
 }
 
 # Keep a separate running-mount specification in every service/add-on case.
@@ -245,21 +333,28 @@ prepare_running_container_mount_permissions() {
             prepare_django_container_settings_permissions "$container_id" "$install_path/conf/settings.py" "$uid" "$gid"
             ;;
         mepram-omop-api-apache)
+            # Apache currently needs no ownership repair inside its running
+            # container. Keep an explicit add-on policy ready for future mounts.
             local -a apache_running_mount_permission_spec=()
             apply_container_directory_permission_spec "$container_id" "${apache_running_mount_permission_spec[@]}"
             ;;
         mepram-omop-api-keycloak)
+            # Realm imports are read-only, so the Keycloak container currently
+            # has no writable mount requiring an in-container ownership repair.
             local -a keycloak_running_mount_permission_spec=()
             apply_container_directory_permission_spec "$container_id" "${keycloak_running_mount_permission_spec[@]}"
             ;;
         mepram-omop-api-keycloak-db)
+            # The persistent MySQL volume must remain owned by the UID/GID used
+            # by the database image, including after restoring or moving data.
             local -a keycloak_db_running_mount_permission_spec=(
                 "/var/lib/mysql|999:999|u+rwX,g+rwX,o-rwx"
             )
             apply_container_directory_permission_spec "$container_id" "${keycloak_db_running_mount_permission_spec[@]}"
             ;;
-        *) return 0 ;;
+        *) : ;;
     esac
+    set_application_running_mount_permissions "$service_name" "$container_id"
 }
 
 bootstrap_service() {
@@ -308,75 +403,6 @@ build_production_service() {
     esac
 }
 
-# Applications with disposable fixtures or demo files customize this callback
-# in their generated wrapper and set application_supports_test_data=true. Keep
-# application-specific fixture names, users/groups, downloads, and data-service
-# layout here so the complete test installation remains readable in one file.
-application_supports_test_data=true
-load_test_deployment_data() {
-    local app_container app_install_path container_sql status
-
-    if [ "$skip_demo_data" = true ] \
-        || { [ "$mode" = test ] && [ "$skip_test_data" = true ] && [ -z "$demo_data" ]; }; then
-        echo "Skipping MePRAM dashboard demo data as requested"
-        return 0
-    fi
-    if [ -z "$demo_data" ]; then
-        die "MePRAM has no default demo-data download URL; provide " \
-            "--demo_data or explicitly use --skip_demo_data"
-    fi
-    [ -f "$demo_data" ] || die "Dashboard demo-data SQL file not found: $demo_data"
-
-    app_container="$(current_service_container mepram-omop-api)" \
-        || die "Unable to resolve the mepram-omop-api container for demo-data loading"
-    app_install_path="$(service_install_path mepram-omop-api)"
-    container_sql="/tmp/mepram-dashboard-demo.sql"
-
-    echo "Loading MePRAM dashboard demo data from $demo_data"
-    engine_exec cp "$demo_data" "$app_container:$container_sql"
-    status=0
-    engine_exec exec -w "$app_install_path" "$app_container" \
-        "$app_install_path/virtualenv/bin/python" manage.py \
-        import_dashboard_sql "$container_sql" --truncate || status=$?
-    engine_exec exec "$app_container" rm -f "$container_sql" || true
-    [ "$status" -eq 0 ] || die "MePRAM dashboard demo-data import failed"
-}
-
-action="install"; mode="production"; engine="docker"; git_revision="current"
-install_conf=""; compose_file=""; compose_env_file=""
-install_conf_map_entries=(); migration_script_before=(); migration_script_after=()
-demo_data=""; demo_data_service=""; demo_data_map_entries=()
-skip_demo_data=""; skip_test_data=""; skip_test_data_services=()
-load_tables=false; skip_tables=false
-
-usage() {
-    cat <<'EOF'
-Install, upgrade, or repair the application deployment.
-
-Options:
-  --action install|upgrade|fix-permissions
-  --test
-  --engine docker|podman
-  --git_revision <branch|tag|commit|current>
-  --install_conf <path>              First application service only.
-  --install_conf_map <component,path>  Repeat for application and add-on overrides.
-  --compose_file <path>
-  --script_before <name[,args]>
-  --script_after <name[,args]>
-  --script <name[,args]>
-  --tables                          Load initial tables; opt-in on upgrades.
-  --skip_tables                     Skip initial tables on a fresh install.
-  --demo_data <path>                 Single-service compatibility option.
-  --demo_data_map <service,path>     Repeat for service-specific data imports.
-  --skip_demo_data
-  --skip_test_data
-  --skip_test_data_service <service>  Repeat to skip one service's test fixtures.
-  --help
-  --version
-EOF
-}
-die() { echo "ERROR: $*" >&2; exit 1; }
-
 # 1. Parse the canonical outer-installer interface.
 while (($#)); do
     case "$1" in
@@ -407,22 +433,27 @@ done
 [[ "$engine" =~ ^(docker|podman)$ ]] || die "Invalid engine: $engine"
 declare -A demo_data_by_service=()
 if [ -n "$demo_data" ]; then
-    [ "${#install_services[@]}" -eq 1 ] || die "--demo_data is valid only for a single-service deployment; use --demo_data_map service,path"
+    [ "${#install_services[@]}" -eq 1 ] \
+        || die "--demo_data is valid only for a single-service deployment; use --demo_data_map service,path"
     demo_data_map_entries+=("${install_services[0]},$demo_data")
 fi
 for mapping in "${demo_data_map_entries[@]}"; do
     [[ "$mapping" == *,* ]] || die "Invalid --demo_data_map: $mapping"
     service_name="${mapping%%,*}"; path="${mapping#*,}"
-    array_contains "$service_name" "${install_services[@]}" || die "Unknown demo-data service: $service_name"
-    [ -z "${demo_data_by_service[$service_name]+present}" ] || die "Duplicate --demo_data_map service: $service_name"
+    array_contains "$service_name" "${install_services[@]}" \
+        || die "Unknown demo-data service: $service_name"
+    [ -z "${demo_data_by_service[$service_name]+present}" ] \
+        || die "Duplicate --demo_data_map service: $service_name"
     [ -n "$path" ] || die "Empty demo-data path for $service_name"
     [ -f "$path" ] || die "Demo-data file not found for $service_name: $path"
     demo_data_by_service["$service_name"]="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
 done
 for service_name in "${skip_test_data_services[@]}"; do
-    array_contains "$service_name" "${install_services[@]}" || die "Unknown --skip_test_data_service: $service_name"
+    array_contains "$service_name" "${install_services[@]}" \
+        || die "Unknown --skip_test_data_service: $service_name"
 done
-if [ "${#demo_data_by_service[@]}" -gt 0 ] && [ "$application_supports_test_data" != true ]; then
+if [ "${#demo_data_by_service[@]}" -gt 0 ] \
+    && [ "$application_supports_test_data" != true ]; then
     die "--demo_data_map is not implemented for $APPLICATION_NAME"
 fi
 if [ "${#demo_data_by_service[@]}" -gt 0 ] && [ "$action" != install ]; then
@@ -548,12 +579,20 @@ if [ "$action" = install ] \
     if [ "${#demo_data_by_service[@]}" -gt 0 ]; then
         for service_name in "${install_services[@]}"; do
             [ -n "${demo_data_by_service[$service_name]+present}" ] || continue
-            demo_data_service="$service_name"; demo_data="${demo_data_by_service[$service_name]}"; skip_test_data=true
+            demo_data_service="$service_name"
+            demo_data="${demo_data_by_service[$service_name]}"
+            skip_test_data=true
             load_test_deployment_data "$demo_data_service" "$demo_data"
         done
     else
-        demo_data_service="${install_services[0]}"; demo_data=""
-        array_contains "$demo_data_service" "${skip_test_data_services[@]}" && skip_test_data=true
+        # Preserve existing test-loader behavior. Multi-service applications
+        # should dispatch internally using demo_data_service when they need
+        # service-specific default fixtures.
+        demo_data_service="${install_services[0]}"
+        demo_data=""
+        if array_contains "$demo_data_service" "${skip_test_data_services[@]}"; then
+            skip_test_data=true
+        fi
         load_test_deployment_data "$demo_data_service" "$demo_data"
     fi
 fi

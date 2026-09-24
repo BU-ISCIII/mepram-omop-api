@@ -1,19 +1,34 @@
-__pycache__/
-*.py[cod]
-.venv/
-.env
-.env.*
-db_data/
-staticfiles/
-# Deployment settings are supplied through build secrets. Only committed test
-# and template settings belong in the image build context.
+# Production installation settings are passed through a build secret. Exclude
+# all local settings and allow only committed, non-sensitive templates/tests.
 install_settings.txt
 conf/*settings*.txt
 !conf/docker_test_settings.txt
-!conf/template_settings.py
+!conf/template_install_settings.txt
+!conf/template_settings.txt
 .tmp_docker_install_conf_*.txt
-.env.*.file
+.env
+.env.*
+!.env.example
+.env.prod.file
+# Runtime-rendered add-on bind sources are not image build inputs.
 deployment/apache/*.conf
 deployment/settings/
+
+.venv/
+venv/
+virtualenv/
+node_modules/
+.npm/
+.next/
+.vite/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vscode/
+.idea/
 logs/
+tmp/
 documents/
+build/
+dist/
+*.egg-info/
