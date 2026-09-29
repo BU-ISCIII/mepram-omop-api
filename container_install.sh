@@ -98,7 +98,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 # ============================================================================
 install_services=(mepram-omop-api)
 addon_build_services=()
-permission_services=(mepram-omop-api mepram-omop-api-apache mepram-omop-api-keycloak-db mepram-omop-api-keycloak)
+permission_services=(mepram-omop-api mepram-omop-api-db mepram-omop-api-apache mepram-omop-api-keycloak-db mepram-omop-api-keycloak)
 configured_services=(mepram-omop-api apache keycloak)
 
 default_service_install_conf() {
@@ -331,6 +331,14 @@ prepare_running_container_mount_permissions() {
             )
             apply_container_directory_permission_spec "$container_id" "${mepram_omop_api_running_mount_permission_spec[@]}"
             prepare_django_container_settings_permissions "$container_id" "$install_path/conf/settings.py" "$uid" "$gid"
+            ;;
+        mepram-omop-api-db)
+            # The persistent MySQL volume must remain owned by the UID/GID used
+            # by the database image, including after restoring or moving data.
+            local -a mepram_omop_api_db_running_mount_permission_spec=(
+                "/var/lib/mysql|999:999|u+rwX,g+rwX,o-rwx"
+            )
+            apply_container_directory_permission_spec "$container_id" "${mepram_omop_api_db_running_mount_permission_spec[@]}"
             ;;
         mepram-omop-api-apache)
             # Apache currently needs no ownership repair inside its running

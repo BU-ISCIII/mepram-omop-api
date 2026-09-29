@@ -17,7 +17,9 @@ services:
         APP_REPO_PATH: ${MEPRAM_OMOP_API_REPO_PATH:?MEPRAM_OMOP_API_REPO_PATH is required}
         APP_INSTALL_PATH: ${MEPRAM_OMOP_API_INSTALL_PATH:?MEPRAM_OMOP_API_INSTALL_PATH is required}
     restart: unless-stopped
-
+    depends_on:
+      mepram-omop-api-db:
+        condition: service_healthy
     user: "${MEPRAM_OMOP_API_APP_UID:?MEPRAM_OMOP_API_APP_UID is required}:${MEPRAM_OMOP_API_APP_GID:?MEPRAM_OMOP_API_APP_GID is required}"
     environment:
       APP_MODE: prod
@@ -166,6 +168,24 @@ services:
         aliases:
           - keycloak
   # END BU-ISCIII ADDON: keycloak
+  mepram-omop-api-db:
+    image: docker.io/library/mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MEPRAM_OMOP_API_DB_NAME:?MEPRAM_OMOP_API_DB_NAME is required}
+      MYSQL_USER: ${MEPRAM_OMOP_API_DB_USER:?MEPRAM_OMOP_API_DB_USER is required}
+      MYSQL_PASSWORD: ${MEPRAM_OMOP_API_DB_PASSWORD:?MEPRAM_OMOP_API_DB_PASSWORD is required}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    expose: ["3306"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    volumes: [mepram-omop-api_db_data:/var/lib/mysql]
+    networks: [deployment_net]
 
 networks:
   deployment_net:
@@ -173,4 +193,5 @@ networks:
 volumes:
   mepram-omop-api_documents:
   mepram-omop-api_static:
+  mepram-omop-api_db_data:
   keycloak_db_data:

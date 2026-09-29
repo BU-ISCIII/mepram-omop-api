@@ -79,7 +79,7 @@ Persistencia declarada por el despliegue:
 
 | Activo | Ubicacion de produccion | Requisito de recuperacion |
 |---|---|---|
-| `mepram-omop-api` database | External production database | Database backup before migration |
+| `mepram-omop-api` database | `mepram-omop-api_db_data` named volume, mounted by `mepram-omop-api-db` | Logical dump before migration; persistent volume recovery |
 | `mepram-omop-api` documents | `mepram-omop-api_documents` named volume | Volume backup |
 | `mepram-omop-api` static | `mepram-omop-api_static` named volume | Replaceable through collectstatic |
 | `mepram-omop-api` logs | Host bind configured by `HOST_LOG_PATH` in `mepram-omop-api_production_settings.txt` | Retain/rotate per institutional log policy |
