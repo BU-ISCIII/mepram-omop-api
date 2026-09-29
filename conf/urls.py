@@ -5,6 +5,7 @@ from django.urls import include, path
 # BEGIN BU-ISCIII APPLICATION: django-url-imports
 from django.contrib import admin
 from django.views.generic import RedirectView
+
 # END BU-ISCIII APPLICATION: django-url-imports
 
 urlpatterns = [
