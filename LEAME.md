@@ -463,9 +463,10 @@ el inode, moverlo primero a un backup en vez de borrarlo.
 
 ### Bind de importacion de Keycloak
 
-El instalador copia los JSON versionados desde `KEYCLOAK_REALM_SOURCE_PATH` a
-`KEYCLOAK_IMPORT_PATH` antes de iniciar Compose. Con la configuracion generada,
-crea automaticamente esta ruta si el usuario del despliegue puede escribir en
+El instalador renderiza el JSON versionado indicado por
+`KEYCLOAK_REALM_TEMPLATE_PATH` en `KEYCLOAK_IMPORT_PATH` antes de iniciar
+Compose. Con la configuracion generada, crea automaticamente esta ruta si el
+usuario del despliegue puede escribir en
 `/srv/containers/bind/mepram-omop-api`:
 
 ```text
