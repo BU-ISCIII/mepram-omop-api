@@ -30,15 +30,15 @@
     "TIMEZONE": "Europe/Madrid"
   },
   "files": {
-    ".dockerignore": "bd9c115511d6b9dae318e4b6a85ddb282e60a46fd89c6cdecccdc20c668eb0e9",
+    ".dockerignore": "fe30ca2a87248d561ac8bc0e12d9b7ee234ce9567d2eba408c4ec36a5d47c881",
     ".github/DJANGO_MIGRATIONS.md": "812f598c85b7f6766773819b42ba1dda4015388d34ce6f021e37d98f1238ada5",
-    ".gitignore": "a6a3f41492fc34a308da1ab69e504a6c727d6d4b4634faa6aecfa4090e363937",
+    ".gitignore": "30a0833eacc410ff35ab77bed07f86d650f7d4081c530c63205fb36f186317aa",
     "Dockerfile": "aa0881e9519a9d601700da4e3c5079d830bd05dd85c2fd44406b0631ca87be39",
     "LEAME.md": "8f506d3931750b453cc0c2b6751de662b60cbbbd48124ffaab6ecab87bfeab79",
     "README.md": "c926e377c3e9517ca0fbc667e1e3776dd1ad53648be96476236a9927bad5f090",
     "conf/INSTALL_SETTINGS.md": "56db43dbc0d567152042e6086b2782208bf49e2eb4292bf90ee2598ec71ffd75",
     "conf/apache/00-logs.conf": "3c2ab4e693e528d2cad37c0c5bb0bc4511803a7f206b339182de192d4e398092",
-    "conf/apache/01-reverse-proxy.conf": "0855718f3b7359f448fb80098cdd463480d6c3f47e8a59cff9098c1a02afc340",
+    "conf/apache/01-reverse-proxy.conf": "b52adb4108bd03866354ff6d37e776ee5708e9d7bba0f32cbb8520fb8284ae20",
     "conf/apache/02-server-status.conf": "c3b5d26f9b551083faf0d85b188bfa9c577ff0bd3b805f0ec104fe4f7d5101cb",
     "conf/apache/apache_production_settings.txt": "b0aa867c79d50283891e7fc5ac1d70e409b6c6b80a7715f6e21b4617d65d0b33",
     "conf/apache/apache_test_settings.txt": "6fb6cbafb12011ffbbcee91d8aab9841ea66f34361ae85cdfccf9160b5bd844a",
