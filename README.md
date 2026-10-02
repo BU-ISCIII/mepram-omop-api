@@ -569,9 +569,10 @@ podman compose --env-file .env.production.file -f docker-compose.prod.yml restar
 
 #### Keycloak realm bind
 
-The installer copies repository-owned JSON from `KEYCLOAK_REALM_SOURCE_PATH`
-into the deployment-owned `KEYCLOAK_IMPORT_PATH` before Compose starts. With
-the generated production default, the read-only bind source is:
+The installer renders the repository-owned JSON selected by
+`KEYCLOAK_REALM_TEMPLATE_PATH` into the deployment-owned
+`KEYCLOAK_IMPORT_PATH` before Compose starts. With the generated production
+default, the read-only bind source is:
 
 ```text
 /srv/containers/bind/mepram-omop-api/keycloak/realm-import/
