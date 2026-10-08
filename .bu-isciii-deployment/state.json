@@ -55,9 +55,9 @@
     "deployment_health/__init__.py": "bedcff132309f8970b1ca72fcea20c7cb38bb727d48f82d96dbf7104922abda0",
     "deployment_health/urls.py": "07e650212769881297faa2ad3b3f6569f3fd527ef57286f3877f15135efd7ad1",
     "deployment_health/views.py": "d19cc3e8fef8519bae2b7fbdc25d17f6ae7df02479aa8890f4b4d250bb07f2e4",
-    "docker-compose.prod.yml": "6c9794d7dfa2679a13f0859494961bb57d43250b220fdf85ca99d045514dfc1d",
-    "docker-compose.test.yml": "28702b2496fd6b52d991861c757f592626707210cad040563fe716cb60d66dfd",
-    "install.sh": "9bd549b6519ff65bd96c9dadcad053f94b781f986570bb586d1def8e71fac26a",
+    "docker-compose.prod.yml": "9d20d6eb93e79c7f378cac7594e874493a5df41e8af7626a36c2b56361051ec1",
+    "docker-compose.test.yml": "56b1ea0de5c0b72f28402e9de9aa372e34deebbdb9ab82445530dbda521827ad",
+    "install.sh": "16e9816f0ed18b6ad2ad55cff3f356f5918beec7cb52a5e8e93c8d82458223c8",
     "scripts/container_start.sh": "c41296d97e3207505cb8752db8ab99942851eb2d157e2d6615cfb6dd0d1dd108",
     "scripts/smoke_test.sh": "447ba096cba5469f2a31c9d140f912a89e587e1121c811d7339507df07f4fdcc"
   },

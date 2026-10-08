@@ -35,8 +35,9 @@ services:
       API_THROTTLE_RATE: ${MEPRAM_OMOP_API_API_THROTTLE_RATE:-500/hour}
       API_DOCS_REQUIRE_STAFF: ${MEPRAM_OMOP_API_API_DOCS_REQUIRE_STAFF:-true}
       OIDC_AUTH_REQUIRED: ${MEPRAM_OMOP_API_OIDC_AUTH_REQUIRED:-false}
-      OIDC_ISSUER: ${MEPRAM_OMOP_API_OIDC_ISSUER:-}
-      OIDC_JWKS_URL: ${MEPRAM_OMOP_API_OIDC_JWKS_URL:-}
+      # Test tokens use the public issuer; apps fetch keys from Keycloak internally.
+      OIDC_ISSUER: ${KEYCLOAK_PUBLIC_URL:-http://127.0.0.1:8081}/realms/${KEYCLOAK_REALM:-test}
+      OIDC_JWKS_URL: http://keycloak:8080/realms/${KEYCLOAK_REALM:-test}/protocol/openid-connect/certs
       OIDC_AUDIENCE: ${MEPRAM_OMOP_API_OIDC_AUDIENCE:-}
       OIDC_CLIENT_ID: ${MEPRAM_OMOP_API_OIDC_CLIENT_ID:-}
       OIDC_JWKS_CACHE_TTL_SECONDS: ${MEPRAM_OMOP_API_OIDC_JWKS_CACHE_TTL_SECONDS:-300}
@@ -139,6 +140,9 @@ services:
     volumes:
       # Generated test realm; edit its source configuration, not tmp-import.
       - ${KEYCLOAK_IMPORT_PATH:-./keycloak/tmp-import}:/opt/keycloak/data/import:ro,z
+      # OPTIONAL application-owned provider/theme mounts from
+      # ADDONS.keycloak.MOUNTS.
+
     networks:
       deployment_net:
         aliases:
