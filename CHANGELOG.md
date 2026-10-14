@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Credits
 
 - [Enrique Sapena](https://github.com/ESapenaVentura)
-- [Sara Monzon](https://github.com/smonzon)
+- [Sara Monzon](https://github.com/saramonzon)
 - [Daniel VM](https://github.com/Daniel-VM)
 
 #### Added enhancements
