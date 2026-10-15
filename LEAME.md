@@ -85,7 +85,7 @@ Persistencia declarada por el despliegue:
 | `mepram-omop-api` logs | Host bind configured by `HOST_LOG_PATH` in `mepram-omop-api_production_settings.txt` | Retain/rotate per institutional log policy |
 | `mepram-omop-api` rendered settings | Host bind configured by `DJANGO_SETTINGS_PATH` in `mepram-omop-api_production_settings.txt` | Protected configuration backup |
 | Apache logs | `/var/log/local/mepram-omop-api/apache` host bind | Retain/rotate per institutional log policy |
-| Rendered Apache configuration | `deployment/apache/` in the deployment checkout | Rebuildable; preserve reviewed source configuration |
+| Rendered Apache configuration | `APACHE_CONF_PATH` (or `deployment/apache/` when empty) | Rebuildable; preserve reviewed source configuration |
 | Keycloak database | `keycloak_db_data` MySQL named volume | Database and identity backup |
 | Keycloak staged realm | `/srv/containers/bind/mepram-omop-api/keycloak/realm-import/` read-only host bind | Back up with deployment configuration; reproducible bootstrap input, not authoritative identity state |
 
@@ -147,6 +147,13 @@ Valores que requieren decision del responsable de la aplicacion:
 Editar unicamente las copias bajo `deployment/settings/`, completar todas esas
 decisiones y resolver cada `CHANGE_ME` antes de continuar. Los comandos de
 instalacion y actualizacion usan estas rutas protegidas.
+
+Las actualizaciones Django conservan automaticamente `SECRET_KEY` del fichero
+de settings existente en el host, indicado por `DJANGO_SETTINGS_PATH`. No hace
+falta configurar la clave manualmente. Si el fichero no existe, el instalador
+genera una clave nueva. Al restaurar o mover el despliegue a otra ruta de
+settings, restaurar alli el fichero antiguo antes de instalar si se necesita
+conservar la clave de firma original.
 
 ## Preparar directorios persistentes del host
 

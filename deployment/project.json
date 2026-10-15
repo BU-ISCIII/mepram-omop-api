@@ -1,5 +1,6 @@
 {
   "APP_NAME": "MePRAM OMOP API",
+  "APP_VERSION": "1.1.0",
   "APP_SLUG": "mepram-omop-api",
   "DESCRIPTION": "Read-only Django REST API for aggregated MePRAM dashboard data generated from OMOP data.",
   "REPOSITORY_URL": "https://github.com/BU-ISCIII/mepram-omop-api.git",
