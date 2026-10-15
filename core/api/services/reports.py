@@ -29,11 +29,10 @@ def report(params=None):
 
     # Return everything except the primary key
     fields = [
-        f.name
-        for f in models.ReportCache._meta.concrete_fields
-        if not f.primary_key
+        f.name for f in models.ReportCache._meta.concrete_fields if not f.primary_key
     ]
     return all_models.values(*fields)
+
 
 def save_report(validated_data):
     _validate_payload(validated_data["payload"])  # Validate the payload before saving
