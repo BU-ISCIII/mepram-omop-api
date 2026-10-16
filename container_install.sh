@@ -1,362 +1,627 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MEPRAM_VERSION="1.0.0"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$script_dir/deployment/lib/container/common.sh"
+# shellcheck disable=SC1091
+source "$script_dir/deployment/lib/container/django.sh"
+
+APP_VERSION="1.1.0"
+APPLICATION_NAME="MePRAM OMOP API"
+CONTAINER_INSTALL_VERSION="0.1.0"
+
+# Applications with disposable fixtures or demo files customize this callback
+# and set application_supports_test_data=true. Keep application-specific
+# fixture names, users/groups, downloads, and data-service layout here.
+# BEGIN BU-ISCIII APPLICATION: deployment-hooks
+application_supports_test_data=true
+load_test_deployment_data() {
+    local app_container app_install_path container_sql status
+
+    if [ "$skip_demo_data" = true ] \
+        || { [ "$mode" = test ] && [ "$skip_test_data" = true ] && [ -z "$demo_data" ]; }; then
+        echo "Skipping MePRAM dashboard demo data as requested"
+        return 0
+    fi
+    if [ -z "$demo_data" ]; then
+        die "MePRAM has no default demo-data download URL; provide " \
+            "--demo_data or explicitly use --skip_demo_data"
+    fi
+    [ -f "$demo_data" ] || die "Dashboard demo-data SQL file not found: $demo_data"
+
+    app_container="$(current_service_container mepram-omop-api)" \
+        || die "Unable to resolve the mepram-omop-api container for demo-data loading"
+    app_install_path="$(service_install_path mepram-omop-api)"
+    container_sql="/tmp/mepram-dashboard-demo.sql"
+
+    echo "Loading MePRAM dashboard demo data from $demo_data"
+    engine_exec cp "$demo_data" "$app_container:$container_sql"
+    status=0
+    engine_exec exec -w "$app_install_path" "$app_container" \
+        "$app_install_path/virtualenv/bin/python" manage.py \
+        import_dashboard_sql "$container_sql" --truncate || status=$?
+    engine_exec exec "$app_container" rm -f "$container_sql" || true
+    [ "$status" -eq 0 ] || die "MePRAM dashboard demo-data import failed"
+}
+
+# Add application-only host bind paths that profiles/add-ons cannot describe.
+set_application_host_bind_permissions() {
+    :
+}
+
+# Arguments: service name and running container ID. Add application-only
+# writable paths; profile/add-on permissions have already been applied.
+set_application_running_mount_permissions() {
+    :
+}
+# END BU-ISCIII APPLICATION: deployment-hooks
+
+action="install"; mode="production"; engine="docker"; git_revision="current"
+install_conf=""; compose_file=""; compose_env_file=""
+install_conf_map_entries=(); migration_script_before=(); migration_script_after=()
+demo_data=""; demo_data_service=""; demo_data_map_entries=()
+skip_demo_data=""; skip_test_data=""; skip_test_data_services=()
+load_tables=false; skip_tables=false
 
 usage() {
-cat << EOF
-This script installs and upgrades the MePRAM API in containers.
+    cat <<'EOF'
+Install, upgrade, or repair the application deployment.
 
-Usage : $0 [--dashboard_sql] [--git_revision] [--compose_file] [--install_conf] [--install_conf_map] [--action] [--engine] [--test]
-    Optional input data:
-    --dashboard_sql      | Path to dashboard.sql to import after migrations
-    --git_revision       | Specify the Git revision to install (default: develop, or 'current' to use copied local sources)
-    --compose_file       | Compose file to use (overrides default)
-    --install_conf       | Settings file consumed during container image build/runtime
-    --install_conf_map   | Service-specific settings file: service,path (can be repeated). Valid service: mepram_api
-    --action             | install (default) or upgrade, to control bootstrap mode
-    --skip_dashboard_sql | Skip dashboard SQL import even if --dashboard_sql is provided
-    --engine             | Container engine to use: docker (default) or podman
-    --test               | Use development/test compose file and test settings
-
-Examples:
-    Install test stack
-    bash $0 --test
-
-    Install test stack from current local committed sources without checking out a branch in-container
-    bash $0 --test --git_revision current
-
-    Install and import dashboard data
-    bash $0 --test --dashboard_sql /path/to/dashboard.sql
-
-    Upgrade an existing deployment using the same database
-    bash $0 --install_conf conf/docker_test_settings.txt --action upgrade
-
+Options:
+  --action install|upgrade|fix-permissions
+  --test
+  --engine docker|podman
+  --git_revision <branch|tag|commit|current>
+  --install_conf <path>              First application service only.
+  --install_conf_map <component,path>  Repeat for application and add-on overrides.
+  --compose_file <path>
+  --script_before <name[,args]>
+  --script_after <name[,args]>
+  --script <name[,args]>
+  --tables                          Load initial tables; opt-in on upgrades.
+  --skip_tables                     Skip initial tables on a fresh install.
+  --demo_data <path>                 Single-service compatibility option.
+  --demo_data_map <service,path>     Repeat for service-specific data imports.
+  --skip_demo_data
+  --skip_test_data
+  --skip_test_data_service <service>  Repeat to skip one service's test fixtures.
+  --help
+  --version
 EOF
 }
+die() { echo "ERROR: $*" >&2; exit 1; }
 
-reset=true
+# ============================================================================
+# GENERATED SERVICE/ADD-ON IMPLEMENTATION
+# Everything below usage() is managed by the descriptor, profiles, add-ons, or
+# common lifecycle. Put application behavior only in the block above.
+# ============================================================================
+install_services=(mepram-omop-api)
+addon_build_services=()
+permission_services=(mepram-omop-api mepram-omop-api-db mepram-omop-api-apache mepram-omop-api-keycloak-db mepram-omop-api-keycloak)
+configured_services=(mepram-omop-api apache keycloak)
 
-for arg in "$@"
-do
-    if [ -n "${reset:-}" ]; then
-      unset reset
-      set --
-    fi
-    case "$arg" in
-        --dashboard_sql)      set -- "$@" -d ;;
-        --git_revision)       set -- "$@" -g ;;
-        --compose_file)       set -- "$@" -c ;;
-        --install_conf)       set -- "$@" -s ;;
-        --install_conf_map)   set -- "$@" -j ;;
-        --action)             set -- "$@" -a ;;
-        --skip_dashboard_sql) set -- "$@" -n ;;
-        --test)               set -- "$@" -p ;;
-        --engine)             set -- "$@" -e ;;
-        --help)               set -- "$@" -h ;;
-        --version)            set -- "$@" -v ;;
-        *)                    set -- "$@" "$arg" ;;
+default_service_install_conf() {
+    case "$1" in
+        mepram-omop-api) [ "$mode" = test ] && echo conf/docker_test_settings.txt || echo conf/docker_production_settings.txt ;;
+        apache) [ "$mode" = test ] && echo conf/apache/apache_test_settings.txt || echo conf/apache/apache_production_settings.txt ;;
+        keycloak) [ "$mode" = test ] && echo conf/keycloak/keycloak_test_settings.txt || echo conf/keycloak/keycloak_production_settings.txt ;;
+        *) return 1 ;;
     esac
-done
-
-dashboard_sql=""
-git_revision="develop"
-compose_file=""
-install_conf=""
-install_conf_container=""
-install_conf_map_entries=()
-skip_dashboard_sql=false
-mode="production"
-action="install"
-engine="docker"
-
-ENGINE_CMD=()
-COMPOSE_CMD=()
-
-set_engine() {
-    if [ "$engine" = "docker" ]; then
-        if ! command -v docker >/dev/null 2>&1; then
-            echo "docker not found. Install docker or use --engine podman."
-            exit 1
-        fi
-        ENGINE_CMD=("docker")
-        COMPOSE_CMD=("docker" "compose")
+}
+service_build_context_dir() {
+    case "$1" in
+        mepram-omop-api) echo . ;;
+        *) return 1 ;;
+    esac
+}
+service_environment_prefix() {
+    local prefix
+    array_contains "$1" "${install_services[@]}" || return 1
+    prefix="${1^^}"
+    printf '%s\n' "${prefix//-/_}"
+}
+service_environment_value() {
+    local prefix variable
+    prefix="$(service_environment_prefix "$1")" || return 1
+    variable="${prefix}_$2"
+    if [ -n "${!variable:-}" ]; then
+        printf '%s\n' "${!variable}"
+    elif [ "$#" -ge 3 ]; then
+        printf '%s\n' "$3"
     else
-        if ! command -v podman >/dev/null 2>&1; then
-            echo "podman not found. Install podman or use --engine docker."
-            exit 1
-        fi
-        ENGINE_CMD=("podman")
-        if command -v podman-compose >/dev/null 2>&1; then
-            COMPOSE_CMD=("podman-compose")
-        elif podman compose version >/dev/null 2>&1; then
-            COMPOSE_CMD=("podman" "compose")
-        else
-            echo "podman compose not available. Install podman-compose or use --engine docker."
-            exit 1
-        fi
+        die "$variable is required in the rendered service settings"
     fi
 }
-
-engine_exec() {
-    "${ENGINE_CMD[@]}" "$@"
+service_repo_path() {
+    service_environment_value "$1" REPO_PATH
+}
+service_install_path() {
+    service_environment_value "$1" INSTALL_PATH
+}
+service_readiness_path() {
+    case "$1" in
+        mepram-omop-api) echo "$(service_install_path "$1")/manage.py" ;;
+        *) return 1 ;;
+    esac
+}
+service_image_name() {
+    case "$1" in
+        mepram-omop-api) echo mepram-omop-api:local ;;
+        *) return 1 ;;
+    esac
+}
+service_profile() {
+    case "$1" in
+        mepram-omop-api) echo django ;;
+        *) return 1 ;;
+    esac
+}
+service_dockerfile() {
+    case "$1" in
+        mepram-omop-api) echo Dockerfile ;;
+        *) return 1 ;;
+    esac
+}
+service_container_install_conf() {
+    case "$1" in
+        mepram-omop-api) echo conf/.runtime_install_settings.txt ;;
+        *) return 1 ;;
+    esac
+}
+service_uid() {
+    service_environment_value "$1" APP_UID
+}
+service_gid() {
+    service_environment_value "$1" APP_GID
 }
 
-compose_exec() {
-    "${COMPOSE_CMD[@]}" "$@"
+prepare_compose_environment() {
+    local -a settings_sources=(
+        "MEPRAM_OMOP_API|${install_conf_host_by_service[mepram-omop-api]}"
+        "|${install_conf_host_by_service[apache]}"
+        "|${install_conf_host_by_service[keycloak]}"
+    )
+    local -a deployment_values=(
+        "GIT_REVISION|$git_revision"
+        "MEPRAM_OMOP_API_IMAGE|mepram-omop-api:local"
+    )
+    compose_env_file="$script_dir/.env.${mode}.file"
+    write_compose_environment_file "$compose_env_file" settings_sources deployment_values
 }
 
-read_install_conf_value() {
-    local key="$1"
-    local file="$2"
-
-    bash -c '
-        set -a
-        . "$1"
-        key="$2"
-        printf "%s" "${!key-}"
-    ' _ "$file" "$key"
+# Every project uses the generated interpolation file in both modes because it
+# combines service-specific settings sources with collision-safe prefixes.
+deployment_compose() {
+    compose_exec --env-file "$compose_env_file" "$@"
+}
+current_service_container() {
+    resolve_service_container "$1"
 }
 
-service_exists() {
-    compose_exec --env-file "$install_conf" -f "$compose_file" config --services 2>/dev/null | grep -Fxq "$1"
+print_service_summary() {
+    echo
+    echo "Running services and published ports:"
+    deployment_compose -f "$compose_file" ps
 }
 
-service_container_id() {
-    compose_exec --env-file "$install_conf" -f "$compose_file" ps -q "$1" | head -n 1
-}
+# Each Django service renders its own protected host settings bind. React
+# services and add-ons have no Django settings source.
+prepare_application_host_sources() {
+    local settings_output
+    if [ "$mode" = production ]; then
+        settings_output="$(service_environment_value mepram-omop-api DJANGO_SETTINGS_PATH)"
+        [ -n "$settings_output" ] || { echo "DJANGO_SETTINGS_PATH is required for mepram-omop-api" >&2; return 1; }
+        mkdir -p "$(dirname "$settings_output")"
+        prepare_django_settings_bind_mount ./conf/template_settings.py "$settings_output" "${install_conf_host_by_service[mepram-omop-api]}"
+    fi
+    # conf/apache contains the application-owned Apache sources. Render every
+    # deployment value only after the protected settings environment is loaded,
+    # then expose the completed files as Compose bind sources.
+    local apache_source_dir="$script_dir/conf/apache"
+    local apache_output_dir="${APACHE_CONF_PATH:-$script_dir/deployment/apache}"
+    local apache_conf_name apache_config_service apache_log_path
+    apache_config_service=mepram-omop-api
+    [ -d "$apache_source_dir" ] || {
+        echo "Apache source configuration directory not found: $apache_source_dir" >&2
+        return 1
+    }
+    mkdir -p "$apache_output_dir"
 
-wait_for_service() {
-    local service="$1"
-    local attempts="${2:-90}"
-    local container_id=""
-    local running=""
-    local health=""
+    export APACHE_SERVER_NAME="${APACHE_SERVER_NAME:?APACHE_SERVER_NAME is required}"
+    export APACHE_UPSTREAM_SERVICE="${APACHE_UPSTREAM_SERVICE:-$apache_config_service}"
+    export APACHE_UPSTREAM_PORT="${APACHE_UPSTREAM_PORT:-$(service_environment_value "$apache_config_service" APP_PORT)}"
+    # For the default route, INSTALL_PATH means the service selected by
+    # ADDONS.apache.CONFIG_SERVICE. Multi-service routes use their explicit
+    # API_INSTALL_PATH, WEB_INSTALL_PATH, etc. values instead.
+    export INSTALL_PATH="$(service_install_path "$apache_config_service")"
+    export APACHE_PROXY_TIMEOUT="${APACHE_PROXY_TIMEOUT:-$(service_environment_value "$apache_config_service" GUNICORN_TIMEOUT 120)}"
+    export APACHE_LOG_STEM="${APACHE_LOG_STEM:-$(normalize_apache_server_name "$APACHE_SERVER_NAME")}"
 
-    while [ "$attempts" -gt 0 ]; do
-        container_id="$(service_container_id "$service")"
-        if [ -n "$container_id" ]; then
-            running="$(engine_exec inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)"
-            health="$(engine_exec inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}running{{end}}' "$container_id" 2>/dev/null || true)"
-            if [ "$running" = "true" ] && { [ "$health" = "healthy" ] || [ "$health" = "running" ]; }; then
-                return 0
-            fi
-        fi
-        attempts=$((attempts - 1))
-        sleep 2
+    for apache_conf_name in 00-logs.conf 01-reverse-proxy.conf 02-server-status.conf; do
+        [ -f "$apache_source_dir/$apache_conf_name" ] || {
+            echo "Apache source configuration not found: $apache_source_dir/$apache_conf_name" >&2
+            return 1
+        }
+        render_environment_config_template \
+            "$apache_source_dir/$apache_conf_name" \
+            "$apache_output_dir/$apache_conf_name" 0644 || return 1
     done
 
-    echo "Service '$service' did not become ready."
-    if [ -n "$container_id" ]; then
-        engine_exec logs --tail 200 "$container_id" || true
+    # Production bind-mounts Apache logs from the host; tests use a named volume.
+    if [ "$mode" = production ]; then
+        apache_log_path="${APACHE_LOG_PATH:?APACHE_LOG_PATH is required}"
+        mkdir -p "$apache_log_path"
     fi
-    exit 1
+    # Keep the repository-owned realm template immutable. Render it into the
+    # deployment bind tree before Compose validates and starts Keycloak.
+    local keycloak_realm_template_path keycloak_import_path keycloak_realm_name realm_target
+    keycloak_realm_template_path="${KEYCLOAK_REALM_TEMPLATE_PATH:?KEYCLOAK_REALM_TEMPLATE_PATH is required}"
+    keycloak_import_path="${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required}"
+    keycloak_realm_name="${KEYCLOAK_REALM:?KEYCLOAK_REALM is required}"
+    [[ "$keycloak_realm_name" =~ ^[A-Za-z0-9._-]+$ ]] || {
+        echo "Invalid Keycloak realm name for an import filename: $keycloak_realm_name" >&2
+        return 1
+    }
+    [[ "$keycloak_realm_template_path" == /* ]] || keycloak_realm_template_path="$script_dir/$keycloak_realm_template_path"
+    [[ "$keycloak_import_path" == /* ]] || keycloak_import_path="$script_dir/$keycloak_import_path"
+    [ -f "$keycloak_realm_template_path" ] || {
+        echo "Keycloak realm template not found: $keycloak_realm_template_path" >&2
+        return 1
+    }
+    mkdir -p "$keycloak_import_path"
+    realm_target="$keycloak_import_path/${keycloak_realm_name}-realm.json"
+    render_json_environment_template \
+        "$keycloak_realm_template_path" "$realm_target" 0640 || return 1
 }
 
-print_local_source_diagnostics() {
-    echo "Local source diagnostics:"
-    if command -v git >/dev/null 2>&1 && git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        echo "  local HEAD: $(git -C "$repo_root" log -1 --oneline)"
-    else
-        echo "  local git metadata unavailable"
-    fi
+# Apply the same permission workflow in test and production. Keep one
+# independently reviewable specification per application and selected add-on;
+# the shared helper skips paths that are not used by the active mode.
+prepare_host_bind_source_permissions() {
+    local log_path settings_path uid gid
+    log_path="$(service_environment_value mepram-omop-api HOST_LOG_PATH)"
+    settings_path="$(service_environment_value mepram-omop-api DJANGO_SETTINGS_PATH)"
+    [ -n "$log_path" ] || { echo "HOST_LOG_PATH is required for mepram-omop-api" >&2; return 1; }
+    [ -n "$settings_path" ] || { echo "DJANGO_SETTINGS_PATH is required for mepram-omop-api" >&2; return 1; }
+    uid="$(service_uid mepram-omop-api)"; gid="$(service_gid mepram-omop-api)"
+    local -a mepram_omop_api_host_bind_permission_spec=(
+        "$log_path|$uid:$gid|0775"
+        "$(dirname "$settings_path")|-|0755"
+        "$settings_path|$uid:$gid|0664"
+    )
+    apply_host_permission_spec "${mepram_omop_api_host_bind_permission_spec[@]}"
+    # Generated proxy configuration is read-only in Apache. Its host files need
+    # traversal/read permissions, while the configured log source must be writable.
+    apache_log_path="${APACHE_LOG_PATH:?APACHE_LOG_PATH is required}"
+    local apache_output_dir="${APACHE_CONF_PATH:-$script_dir/deployment/apache}"
+    local -a apache_host_bind_permission_spec=(
+        "$apache_output_dir|-|0755"
+        "$apache_output_dir/00-logs.conf|-|0644"
+        "$apache_output_dir/01-reverse-proxy.conf|-|0644"
+        "$apache_output_dir/02-server-status.conf|-|0644"
+        # registry.access.redhat.com/ubi9/httpd-24 runs as UID 1001 with GID 0.
+        # The shared helper applies these IDs directly for Docker and through
+        # podman unshare when the bind source belongs to a rootless userns.
+        "$apache_log_path|1001:0|0775"
+    )
+    apply_host_permission_spec "${apache_host_bind_permission_spec[@]}"
+    # Realm imports contain deployment configuration and may contain sensitive
+    # client data. Keep the directory traversable and every JSON file non-public.
+    local keycloak_import_path
+    keycloak_import_path="${KEYCLOAK_IMPORT_PATH:?KEYCLOAK_IMPORT_PATH is required}"
+    [[ "$keycloak_import_path" == /* ]] || keycloak_import_path="$script_dir/$keycloak_import_path"
+    local -a keycloak_host_bind_permission_spec=(
+        "$keycloak_import_path|-|0755"
+    )
+    for realm_file in "$keycloak_import_path"/*.json; do
+        keycloak_host_bind_permission_spec+=("$realm_file|1000:0|0640")
+    done
+    apply_host_permission_spec "${keycloak_host_bind_permission_spec[@]}"
+    set_application_host_bind_permissions
 }
 
-options=":d:g:c:s:j:a:e:vhnp"
-while getopts $options opt; do
-    case $opt in
-        d) dashboard_sql=$OPTARG ;;
-        g) git_revision=$OPTARG ;;
-        c) compose_file=$OPTARG ;;
-        s) install_conf=$OPTARG ;;
-        j) install_conf_map_entries+=("$OPTARG") ;;
-        a)
-            action=$OPTARG
-            if [[ "$action" != "install" && "$action" != "upgrade" ]]; then
-                echo "Invalid action '$action'. Use install or upgrade."
-                exit 1
-            fi
+# Keep a separate running-mount specification in every service/add-on case.
+prepare_running_container_mount_permissions() {
+    local service_name="$1" container_id="$2"
+    local install_path uid gid
+    case "$service_name" in
+        mepram-omop-api)
+            install_path="$(service_install_path "$service_name")"
+            uid="$(service_uid "$service_name")"; gid="$(service_gid "$service_name")"
+            local -a mepram_omop_api_running_mount_permission_spec=(
+                "$install_path/logs|$uid:$gid|u+rwX,g+rwX"
+                "$install_path/documents|$uid:$gid|u+rwX,g+rwX"
+                "$install_path/static|$uid:$gid|u+rwX,g+rwX,o+rX"
+            )
+            apply_container_directory_permission_spec "$container_id" "${mepram_omop_api_running_mount_permission_spec[@]}"
+            prepare_django_container_settings_permissions "$container_id" "$install_path/conf/settings.py" "$uid" "$gid"
             ;;
-        e)
-            engine=$OPTARG
-            if [[ "$engine" != "docker" && "$engine" != "podman" ]]; then
-                echo "Invalid engine '$engine'. Use docker or podman."
-                exit 1
-            fi
+        mepram-omop-api-db)
+            # The persistent MySQL volume must remain owned by the UID/GID used
+            # by the database image, including after restoring or moving data.
+            local -a mepram_omop_api_db_running_mount_permission_spec=(
+                "/var/lib/mysql|999:999|u+rwX,g+rwX,o-rwx"
+            )
+            apply_container_directory_permission_spec "$container_id" "${mepram_omop_api_db_running_mount_permission_spec[@]}"
             ;;
-        n) skip_dashboard_sql=true ;;
-        p) mode="test" ;;
-        h)
-            usage
-            exit 1
+        mepram-omop-api-apache)
+            # Apache currently needs no ownership repair inside its running
+            # container. Keep an explicit add-on policy ready for future mounts.
+            local -a apache_running_mount_permission_spec=()
+            apply_container_directory_permission_spec "$container_id" "${apache_running_mount_permission_spec[@]}"
             ;;
-        v)
-            echo $MEPRAM_VERSION
-            exit 1
+        mepram-omop-api-keycloak)
+            # Realm imports are read-only, so the Keycloak container currently
+            # has no writable mount requiring an in-container ownership repair.
+            local -a keycloak_running_mount_permission_spec=()
+            apply_container_directory_permission_spec "$container_id" "${keycloak_running_mount_permission_spec[@]}"
             ;;
-        \?)
-            echo "Invalid Option: -$OPTARG" 1>&2
-            usage
-            exit 1
+        mepram-omop-api-keycloak-db)
+            # The persistent MySQL volume must remain owned by the UID/GID used
+            # by the database image, including after restoring or moving data.
+            local -a keycloak_db_running_mount_permission_spec=(
+                "/var/lib/mysql|999:999|u+rwX,g+rwX,o-rwx"
+            )
+            apply_container_directory_permission_spec "$container_id" "${keycloak_db_running_mount_permission_spec[@]}"
             ;;
-        :)
-            echo "Option -$OPTARG requires an argument." >&2
-            exit 1
+        *) : ;;
+    esac
+    set_application_running_mount_permissions "$service_name" "$container_id"
+}
+
+bootstrap_service() {
+    local service_name="$1" container_id="$2" deployment_action="$3"
+    local repo_path runtime_conf uid gid status
+    local -a args
+    case "$service_name" in
+        mepram-omop-api)
+            repo_path="$(service_repo_path "$service_name")"
+            # Fixed temporary in-container path; this is not operator configuration.
+            runtime_conf=conf/.runtime_install_settings.txt
+            [[ "$runtime_conf" == /* ]] || runtime_conf="$repo_path/$runtime_conf"
+            uid="$(service_uid "$service_name")"; gid="$(service_gid "$service_name")"
+            stage_container_runtime_config "$container_id" "${install_conf_host_by_service[$service_name]}" "$runtime_conf" "$uid" "$gid"
+            args=(--bootstrap "$deployment_action" --git_revision "$git_revision" --conf "$runtime_conf" --skip_apache_restart)
+            [ "$load_tables" = false ] || args+=(--tables)
+            [ "$skip_tables" = false ] || args+=(--skip_tables)
+            for hook in "${migration_script_before[@]}"; do args+=(--script_before "$hook"); done
+            for hook in "${migration_script_after[@]}"; do args+=(--script_after "$hook"); done
+            status=0; engine_exec exec "$container_id" bash "$repo_path/install.sh" "${args[@]}" || status=$?
+            [ "$mode" = test ] || remove_container_runtime_config "$container_id" "$runtime_conf" || true
+            return "$status"
             ;;
-        *)
-            echo "Unimplemented option: -$OPTARG" >&2
-            exit 1
+        *) return 0 ;;
+    esac
+}
+
+build_production_service() {
+    local service_name="$1" context="$2" dockerfile="$3"
+    case "$service_name" in
+        mepram-omop-api)
+            engine_build --no-cache --file "$context/$dockerfile" \
+                --secret "id=install_conf,src=${install_conf_host_by_service[$service_name]}" \
+                --build-arg GIT_REVISION="$git_revision" \
+                --build-arg INSTALL_CONF="$(service_container_install_conf "$service_name")" \
+                --build-arg USE_INSTALL_CONF_SECRET=true \
+                --build-arg RENDER_DJANGO_SETTINGS=false \
+                --build-arg APP_REPO_PATH="$(service_repo_path "$service_name")" \
+                --build-arg APP_INSTALL_PATH="$(service_install_path "$service_name")" \
+                --build-arg APP_PORT="$(service_environment_value "$service_name" APP_PORT)" \
+                --build-arg APP_UID="$(service_uid "$service_name")" \
+                --build-arg APP_GID="$(service_gid "$service_name")" \
+                --tag "$(service_image_name "$service_name")" "$context"
             ;;
+        *) die "Unsupported production build service: $service_name" ;;
+    esac
+}
+
+# 1. Parse the canonical outer-installer interface.
+while (($#)); do
+    case "$1" in
+        --action) action="${2:-}"; shift 2 ;;
+        --test) mode="test"; shift ;;
+        --engine) engine="${2:-}"; shift 2 ;;
+        --git_revision) git_revision="${2:-}"; shift 2 ;;
+        --install_conf) install_conf="${2:-}"; shift 2 ;;
+        --install_conf_map) install_conf_map_entries+=("${2:-}"); shift 2 ;;
+        --compose_file) compose_file="${2:-}"; shift 2 ;;
+        --script_before) migration_script_before+=("${2:-}"); shift 2 ;;
+        --script_after|--script) migration_script_after+=("${2:-}"); shift 2 ;;
+        --tables) load_tables=true; skip_tables=false; shift ;;
+        --skip_tables) skip_tables=true; load_tables=false; shift ;;
+        --demo_data) demo_data="${2:-}"; shift 2 ;;
+        --demo_data_map) demo_data_map_entries+=("${2:-}"); shift 2 ;;
+        --skip_demo_data) skip_demo_data=true; shift ;;
+        --skip_test_data) skip_test_data=true; shift ;;
+        --skip_test_data_service) skip_test_data_services+=("${2:-}"); shift 2 ;;
+        --help) usage; exit 0 ;;
+        --version) echo "$CONTAINER_INSTALL_VERSION"; exit 0 ;;
+        *) die "Unknown option: $1" ;;
     esac
 done
-shift $((OPTIND-1))
 
-if [ "$mode" = "test" ]; then
-    compose_file="${compose_file:-docker-compose.test.yml}"
+# 2. Validate arguments before modifying deployment state.
+[[ "$action" =~ ^(install|upgrade|fix-permissions)$ ]] || die "Invalid action: $action"
+[[ "$engine" =~ ^(docker|podman)$ ]] || die "Invalid engine: $engine"
+declare -A demo_data_by_service=()
+if [ -n "$demo_data" ]; then
+    [ "${#install_services[@]}" -eq 1 ] \
+        || die "--demo_data is valid only for a single-service deployment; use --demo_data_map service,path"
+    demo_data_map_entries+=("${install_services[0]},$demo_data")
+fi
+for mapping in "${demo_data_map_entries[@]}"; do
+    [[ "$mapping" == *,* ]] || die "Invalid --demo_data_map: $mapping"
+    service_name="${mapping%%,*}"; path="${mapping#*,}"
+    array_contains "$service_name" "${install_services[@]}" \
+        || die "Unknown demo-data service: $service_name"
+    [ -z "${demo_data_by_service[$service_name]+present}" ] \
+        || die "Duplicate --demo_data_map service: $service_name"
+    [ -n "$path" ] || die "Empty demo-data path for $service_name"
+    [ -f "$path" ] || die "Demo-data file not found for $service_name: $path"
+    demo_data_by_service["$service_name"]="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
+done
+for service_name in "${skip_test_data_services[@]}"; do
+    array_contains "$service_name" "${install_services[@]}" \
+        || die "Unknown --skip_test_data_service: $service_name"
+done
+if [ "${#demo_data_by_service[@]}" -gt 0 ] \
+    && [ "$application_supports_test_data" != true ]; then
+    die "--demo_data_map is not implemented for $APPLICATION_NAME"
+fi
+if [ "${#demo_data_by_service[@]}" -gt 0 ] && [ "$action" != install ]; then
+    die "--demo_data_map is supported only with --action install"
+fi
+if [ "${#demo_data_by_service[@]}" -gt 0 ] && [ "${skip_demo_data:-false}" = true ]; then
+    die "--demo_data_map cannot be combined with --skip_demo_data"
+fi
+# Test installs may use application defaults. Production remains strictly
+# opt-in, loads only an explicitly supplied demo file, and never enables test
+# fixtures alongside it.
+if [ "$mode" = test ] && [ "$action" = install ] \
+    && [ "$application_supports_test_data" = true ]; then
+    skip_demo_data="${skip_demo_data:-false}"
+    skip_test_data="${skip_test_data:-false}"
+elif [ "$action" = install ] && [ "${#demo_data_by_service[@]}" -gt 0 ] \
+    && [ "$application_supports_test_data" = true ]; then
+    skip_demo_data="${skip_demo_data:-false}"
+    skip_test_data=true
 else
-    compose_file="${compose_file:-docker-compose.prod.yml}"
+    skip_demo_data=true
+    skip_test_data=true
 fi
 
-app_service="${APP_SERVICE:-mepram_api}"
-selected_install_conf="$install_conf"
-for map_entry in "${install_conf_map_entries[@]}"; do
-    svc_name="${map_entry%%,*}"
-    conf_name="${map_entry#*,}"
-    if [ -z "$svc_name" ] || [ -z "$conf_name" ] || [ "$svc_name" = "$map_entry" ]; then
-        echo "Invalid --install_conf_map value '$map_entry'. Expected format: service,path"
-        exit 1
+# 3. Resolve one protected configuration source per configured component.
+cd "$script_dir"
+declare -A install_conf_host_by_service=()
+for service_name in "${configured_services[@]}"; do
+    install_conf_host_by_service["$service_name"]="$(default_service_install_conf "$service_name")"
+done
+if [ -n "$install_conf" ]; then install_conf_host_by_service["${install_services[0]}"]="$install_conf"; fi
+for mapping in "${install_conf_map_entries[@]}"; do
+    [[ "$mapping" == *,* ]] || die "Invalid --install_conf_map: $mapping"
+    service_name="${mapping%%,*}"; path="${mapping#*,}"
+    array_contains "$service_name" "${configured_services[@]}" || die "Unknown mapped component: $service_name"
+    install_conf_host_by_service["$service_name"]="$path"
+done
+for service_name in "${configured_services[@]}"; do
+    path="${install_conf_host_by_service[$service_name]}"
+    [[ "$path" = /* ]] || path="$script_dir/$path"
+    [ -f "$path" ] || die "Configuration for $service_name not found: $path"
+    if [ "$mode" = production ] \
+        && grep -Eq '^[A-Z0-9_]+=.*CHANGE_ME' "$path"; then
+        die "Production configuration for $service_name contains CHANGE_ME: $path"
     fi
-    if [ "$svc_name" != "mepram_api" ] && [ "$svc_name" != "app" ]; then
-        echo "Unknown service '$svc_name' in --install_conf_map. Valid service: mepram_api"
-        exit 1
-    fi
-    selected_install_conf="$conf_name"
+    install_conf_host_by_service["$service_name"]="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
 done
 
-if [ "$mode" = "test" ] && [ -z "$selected_install_conf" ]; then
-    selected_install_conf="conf/docker_test_settings.txt"
+# 4. Select the engine, prepare host sources and validate the final Compose model.
+set_engine "$engine"
+compose_file="${compose_file:-docker-compose.$([ "$mode" = test ] && echo test || echo prod).yml}"
+require_compose_file "$compose_file"
+prepare_compose_environment
+load_compose_environment_file "$compose_env_file"
+prepare_application_host_sources
+prepare_host_bind_source_permissions
+deployment_compose -f "$compose_file" config \
+    || die "Compose configuration validation failed: $compose_file"
+# Cross-check wiring between services before any image is built.
+service_profiles=()
+for service_name in "${install_services[@]}"; do
+    service_profiles+=("$service_name=$(service_profile "$service_name")")
+done
+check_deployment_configuration "$mode" "$compose_env_file" "$compose_file" \
+    "${APACHE_CONF_PATH:-$script_dir/deployment/apache}" "${service_profiles[@]}" \
+    || die "Deployment configuration check failed; correct the settings reported above"
+
+# 5. Dispatch permission-only repair without building or bootstrapping.
+if [ "$action" = fix-permissions ]; then
+    for service_name in "${permission_services[@]}"; do
+        container_id="$(current_service_container "$service_name" 2>/dev/null || true)"
+        [ -z "$container_id" ] || prepare_running_container_mount_permissions "$service_name" "$container_id"
+    done
+    echo "Permissions repaired without build or bootstrap."
+    exit 0
 fi
-install_conf="$selected_install_conf"
 
-if [ "$mode" = "production" ] && [ -z "$install_conf" ]; then
-    echo "Production deployments require --install_conf or --install_conf_map mepram_api,<path>."
-    exit 1
-fi
-
-if [ ! -f "$compose_file" ]; then
-    echo "Compose file '$compose_file' not found"
-    exit 1
-fi
-
-if [ ! -f "$install_conf" ]; then
-    echo "Install configuration '$install_conf' not found"
-    exit 1
-fi
-
-if [ -n "$dashboard_sql" ] && [ ! -f "$dashboard_sql" ]; then
-    echo "Dashboard SQL file '$dashboard_sql' not found"
-    exit 1
-fi
-
-repo_root="$(pwd)"
-build_context_dir="$repo_root"
-temp_install_conf=""
-
-cleanup_temp_conf() {
-    if [ -n "$temp_install_conf" ] && [ -f "$temp_install_conf" ]; then
-        rm -f "$temp_install_conf"
+# 6. Build application services in declared order. Production builds use
+# profile-owned callbacks so each framework receives only its supported build
+# inputs. This avoids requiring Compose implementations to support
+# build.secrets.
+for service_name in "${install_services[@]}"; do
+    if [ "$mode" = test ]; then
+        deployment_compose -f "$compose_file" build --no-cache "$service_name"
+        continue
     fi
-}
-trap cleanup_temp_conf EXIT
+    context="$(service_build_context_dir "$service_name")"
+    dockerfile="$(service_dockerfile "$service_name")"
+    build_production_service "$service_name" "$context" "$dockerfile"
+done
+# Build add-on images through Compose so their declared build arguments and
+# add-on-owned Dockerfiles remain the single source of truth.
+for service_name in "${addon_build_services[@]}"; do
+    deployment_compose -f "$compose_file" build --no-cache "$service_name"
+done
+# 7. Recreate and start the complete topology from one Compose invocation so
+# freshly built images and the current configuration are deployed consistently.
+# Named volumes and bind-mounted persistent data are preserved.
+deployment_compose -f "$compose_file" up -d --force-recreate
 
-if [[ "$install_conf" = /* ]] && [[ "$install_conf" != "$build_context_dir/"* ]]; then
-    temp_install_conf="$build_context_dir/.tmp_docker_install_conf_mepram_$$.txt"
-    echo "Copying $install_conf into temporary file $temp_install_conf for Docker build/runtime."
-    cp "$install_conf" "$temp_install_conf"
-    install_conf="$temp_install_conf"
+# 8. Wait for every application service readiness contract.
+for service_name in "${install_services[@]}"; do
+    container_id="$(current_service_container "$service_name")"
+    [ -n "$container_id" ] || die "Unable to resolve $service_name container"
+    ensure_service_running "$service_name" "$container_id" >/dev/null
+    readiness_path="$(service_readiness_path "$service_name")"
+    deadline=$((SECONDS + 120))
+    until engine_exec exec "$container_id" test -f "$readiness_path"; do
+        ((SECONDS < deadline)) || { engine_exec logs --tail 200 "$container_id"; die "$service_name readiness timeout"; }
+        sleep 2
+    done
+done
+
+# 9. Repair running mounts for applications and selected add-ons.
+for service_name in "${permission_services[@]}"; do
+    container_id="$(current_service_container "$service_name")"
+    prepare_running_container_mount_permissions "$service_name" "$container_id"
+done
+
+# 10. Bootstrap only application profiles that require runtime bootstrap.
+for service_name in "${install_services[@]}"; do
+    container_id="$(current_service_container "$service_name")"
+    bootstrap_service "$service_name" "$container_id" "$action" || die "$service_name bootstrap failed"
+done
+
+# 11. Load application-owned data for a fresh test install, or for an explicit
+# production --demo_data_map request. Production never imports data implicitly.
+if [ "$action" = install ] \
+    && [ "$application_supports_test_data" = true ] \
+    && { [ "$mode" = test ] || [ "${#demo_data_by_service[@]}" -gt 0 ]; }; then
+    if [ "${#demo_data_by_service[@]}" -gt 0 ]; then
+        for service_name in "${install_services[@]}"; do
+            [ -n "${demo_data_by_service[$service_name]+present}" ] || continue
+            demo_data_service="$service_name"
+            demo_data="${demo_data_by_service[$service_name]}"
+            skip_test_data=true
+            load_test_deployment_data "$demo_data_service" "$demo_data"
+        done
+    else
+        # Preserve existing test-loader behavior. Multi-service applications
+        # should dispatch internally using demo_data_service when they need
+        # service-specific default fixtures.
+        demo_data_service="${install_services[0]}"
+        demo_data=""
+        if array_contains "$demo_data_service" "${skip_test_data_services[@]}"; then
+            skip_test_data=true
+        fi
+        load_test_deployment_data "$demo_data_service" "$demo_data"
+    fi
 fi
 
-if [[ "$install_conf" = "$build_context_dir/"* ]]; then
-    install_conf_container="${install_conf#$build_context_dir/}"
-else
-    install_conf_container="$install_conf"
-fi
-
-host_install_conf_path="$install_conf"
-if [[ "$host_install_conf_path" != /* ]]; then
-    host_install_conf_path="$repo_root/$host_install_conf_path"
-fi
-
-set_engine
-
-app_repo_path="${APP_REPO_PATH:-/srv/mepram-omop-api}"
-config_install_path="$(read_install_conf_value "INSTALL_PATH" "$host_install_conf_path")"
-config_app_install_path="$(read_install_conf_value "APP_INSTALL_PATH" "$host_install_conf_path")"
-app_install_path="${APP_INSTALL_PATH:-${config_app_install_path:-${config_install_path:-/srv/mepram-omop-api}}}"
-db_service="${DB_SERVICE:-mepram_db}"
-dashboard_sql_container_path="${DASHBOARD_SQL_CONTAINER_PATH:-/data/dashboard.sql}"
-api_port="$(read_install_conf_value "MEPRAM_API_PORT" "$host_install_conf_path")"
-api_port="${MEPRAM_API_PORT:-${api_port:-8100}}"
-
-print_local_source_diagnostics
-echo "Deploying MePRAM API containers (compose file: $compose_file) with GIT_REVISION=$git_revision..."
-compose_exec --env-file "$install_conf" -f "$compose_file" build
-compose_exec --env-file "$install_conf" -f "$compose_file" up -d
-
-if service_exists "$db_service"; then
-    echo "Waiting for database service: $db_service"
-    wait_for_service "$db_service" 90
-fi
-
-echo "Waiting for application service: $app_service"
-wait_for_service "$app_service" 90
-
-app_container="$(service_container_id "$app_service")"
-if [ -z "$app_container" ]; then
-    echo "Unable to resolve container for service '$app_service'."
-    exit 1
-fi
-
-container_install_conf_path="$install_conf_container"
-if [[ "$container_install_conf_path" != /* ]]; then
-    container_install_conf_path="$app_repo_path/$container_install_conf_path"
-fi
-
-if ! engine_exec exec "$app_container" test -f "$container_install_conf_path"; then
-    echo "Copying install configuration into container at $container_install_conf_path"
-    engine_exec cp "$host_install_conf_path" "${app_container}:$container_install_conf_path"
-fi
-
-if [ -n "$dashboard_sql" ] && [ "$skip_dashboard_sql" = false ]; then
-    echo "Copying dashboard SQL into the API container"
-    engine_exec exec "$app_container" mkdir -p "$(dirname "$dashboard_sql_container_path")"
-    engine_exec cp "$dashboard_sql" "${app_container}:$dashboard_sql_container_path"
-fi
-
-if [ "$action" = "upgrade" ]; then
-    echo "Running install.sh bootstrap inside the container (upgrade mode)"
-    engine_exec exec "$app_container" bash -c "cd '$app_repo_path' && APP_INSTALL_PATH='$app_install_path' bash install.sh --bootstrap upgrade --git_revision '$git_revision' --conf '$install_conf_container' --skip_apache_restart"
-else
-    echo "Running install.sh bootstrap inside the container (install mode)"
-    engine_exec exec "$app_container" bash -c "cd '$app_repo_path' && APP_INSTALL_PATH='$app_install_path' bash install.sh --bootstrap install --git_revision '$git_revision' --conf '$install_conf_container' --skip_apache_restart"
-fi
-
-if [ -n "$dashboard_sql" ] && [ "$skip_dashboard_sql" = false ]; then
-    echo "Importing dashboard SQL"
-    engine_exec exec "$app_container" bash -c "cd '$app_install_path' && python manage.py import_dashboard_sql '$dashboard_sql_container_path' --truncate"
-else
-    echo "Skipping dashboard SQL import"
-fi
-
-engine_exec exec "$app_container" test -f "$app_install_path/manage.py" || {
-    echo "Error: $app_install_path/manage.py not found after bootstrap. Showing logs:"
-    engine_exec logs --tail 200 "$app_container"
-    exit 1
-}
-
-echo "Marking container installation as ready"
-engine_exec exec "$app_container" sh -c "touch '$app_install_path/.container_install_ready'"
-
-echo "You can now access MePRAM API via:"
-echo "  Health:  http://localhost:${api_port}/v1/health"
-echo "  Swagger: http://localhost:${api_port}/swagger/"
+# 12. Execute the common smoke dispatcher with generated profile checks.
+smoke_args=(--engine "$engine" --compose_file "$compose_file" --env_file "$compose_env_file")
+[ "$mode" = test ] && smoke_args+=(--test)
+bash "$script_dir/scripts/smoke_test.sh" "${smoke_args[@]}"
+echo "$action completed successfully for $APPLICATION_NAME."
+print_service_summary

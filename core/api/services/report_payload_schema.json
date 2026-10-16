@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2023-12/schema",
-    "$id": "https://repiiis.dev/schemas/report_payload_schema.json",
+    "$id": "https://raw.githubusercontent.com/BU-ISCIII/mepram-omop-api/refs/heads/develop/core/api/services/report_payload_schema.json",
     "title": "Report Payload Schema",
     "description": "Schema for report payload JSON files such as mepram-junio.json.",
     "type": "object",

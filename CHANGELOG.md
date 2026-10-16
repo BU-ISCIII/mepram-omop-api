@@ -4,7 +4,47 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - 2026-07-02 : <https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.1>
+## Unreleased
+
+## [1.1.0] - 2026-10-14 : [https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.1.0](https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.1.0)
+
+### Credits
+
+- [Enrique Sapena](https://github.com/ESapenaVentura)
+- [Sara Monzon](https://github.com/saramonzon)
+- [Daniel VM](https://github.com/Daniel-VM)
+
+#### Added enhancements
+
+- Synced with the latest BU-ISCIII deployment standards [#23](https://github.com/BU-ISCIII/mepram-omop-api/pull/23)
+
+#### Fixes
+
+#### Changed
+
+#### Removed
+
+### Requirements
+
+## [1.0.2] - 2026-07-02 : [https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.2dev](https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.2dev)
+
+### Credits
+
+- [Enrique Sapena](https://github.com/ESapenaVentura)
+
+#### Added enhancements
+
+#### Fixes
+
+#### Changed
+
+- Remove auth to access swagger [#19](https://github.com/BU-ISCIII/mepram-omop-api/pull/19)
+
+#### Removed
+
+### Requirements
+
+## [1.0.1] - 2026-07-02 : [https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.1](https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.1)
 
 ### Credits
 
@@ -14,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 #### Added enhancements
 
 - Added protected POST endpoint for reports [#15](https://github.com/BU-ISCIII/mepram-omop-api/pull/15)
+- Support CSRF origins behind HTTPS proxy [#15](https://github.com/BU-ISCIII/mepram-omop-api/pull/18)
 
 #### Fixes
 
@@ -25,7 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Requirements
 
-## [1.0.0] - 2026-07-02 : <https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.0>
+## [1.0.0] - 2026-07-02 : [https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.0](https://github.com/BU-ISCIII/mepram-omop-api/releases/tag/1.0.0)
 
 ### Credits
 
@@ -52,7 +93,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - Fixed installation location to point to /srv and test ports to point to 8000/3000 [#3](https://github.com/BU-ISCIII/mepram-omop-api/pull/3)
 - Fixed README to remove Keycloak and other security aspects [#14](https://github.com/BU-ISCIII/mepram-omop-api/pull/14)
-
 
 #### Changed
 

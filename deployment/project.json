@@ -1,0 +1,31 @@
+{
+  "APP_NAME": "MePRAM OMOP API",
+  "APP_VERSION": "1.1.0",
+  "APP_SLUG": "mepram-omop-api",
+  "DESCRIPTION": "Read-only Django REST API for aggregated MePRAM dashboard data generated from OMOP data.",
+  "REPOSITORY_URL": "https://github.com/BU-ISCIII/mepram-omop-api.git",
+  "DEFAULT_BRANCH": "main",
+  "PYTHON_VERSION": "3.12",
+  "TIMEZONE": "Europe/Madrid",
+  "SERVICES": {
+    "mepram-omop-api": {
+      "PROFILE": "django",
+      "BUILD_CONTEXT": ".",
+      "DOCKERFILE": "Dockerfile",
+      "IMAGE": "mepram-omop-api:local",
+      "INSTALL_CONF": "conf/docker_production_settings.txt",
+      "TEST_INSTALL_CONF": "conf/docker_test_settings.txt",
+      "PROJECT_MODULE": "conf",
+      "API": true,
+      "DATABASE": "compose"
+    }
+  },
+  "ADDONS": {
+    "apache": {
+      "CONFIG_SERVICE": "mepram-omop-api"
+    },
+    "keycloak": {
+      "CONFIG_SERVICE": "mepram-omop-api"
+    }
+  }
+}
